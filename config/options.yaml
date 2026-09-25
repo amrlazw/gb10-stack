@@ -1,0 +1,29 @@
+# gb10-stack option manifest.
+# Adding a future option = adding a block here. install.sh --option <id> picks it.
+# Each option selects an ordered subset of modules. preflight (hardware/disk)
+# ALWAYS runs first regardless of option.
+
+options:
+  - id: option-1
+    name: "Full Stack (non-vision)"
+    default: true
+    modules:
+      - llm-serving
+      - rag
+      - observability
+      - mission-control
+      - remote
+
+  # future options, e.g.:
+  # - id: option-2
+  #   name: "Minimal (serve only)"
+  #   modules: [llm-serving]
+  # - id: option-3
+  #   name: "RAG + serving"
+  #   modules: [llm-serving, rag]
+
+# ── global tunables (shared by all options; env at install time overrides) ──
+tunables:
+  # Disk preflight budget: GB free required on the target filesystem.
+  # option-1 full non-vision ≈ 135 GB. flash lane adds ~225 (GB_FLASH=1).
+  min_free_gb: 135
