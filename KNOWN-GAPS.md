@@ -22,10 +22,11 @@ Honest list, ordered by buyer-impact.
    the installer creates the container but not the account (by design —
    the buyer owns the password). README covers it.
 
-5. **Flash 176B lane is a gated stub** (`GB_FLASH=1`). The 27B/35B lanes are
-   full; the 176B lane reuses the upstream run.sh with `GB_FLASH=1` but the
-   +225 GB disk math and the single-model memory swap were not exercised on
-   hardware.
+5. **Flash 176B lane is delegated, not exercised.** `GB_FLASH=1` installs the
+   upstream flash lane (`MODEL_CHOICE=flash`), which is a *switchable* lane on
+   :30000 (toggled via upstream `switch-model.sh`), not a third simultaneously
+   live model. The +225 GB disk math and PLE-table boot (~11 min cold) were
+   not exercised on hardware by this build; upstream owns the mechanism.
 
 6. **`verify.sh` LLM rows assume default ports** (30000/30001/30002/30090).
    Non-default ports (upstream env overrides) make those rows false-FAIL.

@@ -111,14 +111,20 @@ EOF
   ok "35B lane: unit $unit35, launch $launch35 (port $port_35b)"
 
   # ── Flash 176B lane (opt-in) ────────────────────────────────────────────
+  # Reality (reference box): qwen38-flash.service is a SWITCHABLE lane on the
+  # same :30000 — upstream's switch-model.sh toggles which of 27B/flash is
+  # active; they are NOT simultaneously live. The 35B on :30002 keeps running
+  # in either case. Upstream owns image, PLE table, tiers (FLASH_TIER).
   if [ "${GB_FLASH:-0}" = "1" ]; then
-    info "Flash 176B lane (opt-in): delegating to upstream flash lane (+225 GB)"
+    info "Flash 176B lane (opt-in): installing upstream flash lane on :30000 (+225 GB)"
     if [ "$GBPLAN" = "1" ]; then
-      plan "MODEL_CHOICE=flash curl -fsSL .../get.sh | bash -s --  (upstream flash lane)"
+      plan "curl -fsSL .../get.sh | env MODEL_CHOICE=flash bash -s --  (upstream flash lane, switchable with 27B via switch-model.sh)"
     else
-      env MODEL_CHOICE=flash curl -fsSL "https://raw.githubusercontent.com/hasso5703/dgx-spark-qwen38/main/get.sh" | bash -s --
+      curl -fsSL "https://raw.githubusercontent.com/hasso5703/dgx-spark-qwen38/main/get.sh" \
+        | env MODEL_CHOICE=flash bash -s --
+      ok "flash lane installed — toggle with: cd ~/dgx-spark-qwen38 && ./switch-model.sh flash | stock"
     fi
   else
-    info "Flash 176B lane: skipped (set GB_FLASH=1 to enable; +225 GB)"
+    info "Flash 176B lane: skipped (set GB_FLASH=1 to enable; +225 GB, switchable with 27B on :30000)"
   fi
 }
