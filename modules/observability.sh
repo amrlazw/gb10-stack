@@ -26,7 +26,13 @@ mod_install() {
   if [ "$GBPLAN" = "1" ]; then
     plan "install prometheus, prometheus-node-exporter, and grafana"
   else
-    run_root "add-apt-repository -y universe"
+    # universe is on by default in 24.04; self-heal add-apt-repository (shipped
+    # in software-properties-common, absent on some minimal OEM images) so a
+    # fresh box never dies here.
+    if ! command -v add-apt-repository >/dev/null 2>&1; then
+      run_root "DEBIAN_FRONTEND=noninteractive apt-get install -y software-properties-common"
+    fi
+    run_root "add-apt-repository -y universe || true"
     run_root "apt-get update -qq"
     run_root "DEBIAN_FRONTEND=noninteractive apt-get install -y prometheus prometheus-node-exporter"
 
