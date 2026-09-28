@@ -96,17 +96,52 @@ preflight() {
 }
 preflight
 
+# ── visual progress bar for users ─────────────────────────────────────────
+show_progress() {
+  local current="$1"
+  local total="$2"
+  local step_name="$3"
+  local pct=$(( current * 100 / total ))
+  local bar_len=24
+  local filled=$(( pct * bar_len / 100 ))
+  local empty=$(( bar_len - filled ))
+
+  local bar=""
+  for ((i=0; i<filled; i++)); do bar+="█"; done
+  for ((i=0; i<empty; i++)); do bar+="░"; done
+
+  printf "\n\033[1;34m╭──────────────────────────────────────────────────────────╮\033[0m\n"
+  printf "\033[1;34m│\033[0m  \033[1;32m[%s]\033[0m \033[1;33m%3d%%\033[0m  Step %d/%d: \033[1;37m%-20s\033[0m\033[1;34m│\033[0m\n" "$bar" "$pct" "$current" "$total" "$step_name"
+  printf "\033[1;34m╰──────────────────────────────────────────────────────────╯\033[0m\n\n"
+}
+
 # ── module runner ───────────────────────────────────────────────────────
 declare -a RAN=()
-for mod in $GB_MODULES; do
+MOD_ARRAY=($GB_MODULES)
+TOTAL_MODS=${#MOD_ARRAY[@]}
+[ "$TOTAL_MODS" -eq 0 ] && TOTAL_MODS=1
+MOD_INDEX=0
+
+for mod in "${MOD_ARRAY[@]}"; do
+  MOD_INDEX=$((MOD_INDEX + 1))
   MFILE="$REPO_DIR/modules/$mod.sh"
   [ -f "$MFILE" ] || die "module not found: $MFILE (have: $(ls "$REPO_DIR/modules" | tr '\n' ' '))"
+  
+  case "$mod" in
+    llm-serving)     MOD_TITLE="AI Engine (35B)" ;;
+    rag)             MOD_TITLE="RAG & Open WebUI" ;;
+    observability)   MOD_TITLE="System Metrics" ;;
+    mission-control) MOD_TITLE="Mission Control" ;;
+    *)               MOD_TITLE="$mod" ;;
+  esac
+
+  show_progress "$MOD_INDEX" "$TOTAL_MODS" "$MOD_TITLE"
+
   if [ "$GB_PLAN" != "1" ] && is_done "$mod"; then
     info "skip $mod (already done — use --force to rerun)"
     continue
   fi
-  echo ""
-  echo "── module: $mod"
+  echo "── module: $mod ($MOD_TITLE)"
   # shellcheck disable=SC1090
   source "$MFILE"
   type mod_install >/dev/null 2>&1 || die "module $mod does not define mod_install()"
@@ -123,12 +158,26 @@ done
 
 # ── summary ─────────────────────────────────────────────────────────────
 echo ""
-echo "════════════════════════════════════════════════════════"
 if [ "$GB_PLAN" = "1" ]; then
+  echo "════════════════════════════════════════════════════════"
   echo " PLAN complete: $(echo "${RAN[*]:-none}" | tr ' ' ', ') (zero writes)"
   echo " Re-run without --plan to execute."
+  echo "════════════════════════════════════════════════════════"
 else
-  echo " install complete: $(echo "${RAN[*]:-none}" | tr ' ' ', ')"
-  echo " Next: bash $REPO_DIR/scripts/verify.sh   (ledger: all checks must PASS)"
+  show_progress "$TOTAL_MODS" "$TOTAL_MODS" "Ready to Use!"
+  printf "\033[1;32m══════════════════════════════════════════════════════════════════════\033[0m\n"
+  printf "  \033[1;37m🚀 INSTALLATION COMPLETE! YOUR NVIDIA AI WORKSTATION IS READY\033[0m\n"
+  printf "\033[1;32m══════════════════════════════════════════════════════════════════════\033[0m\n\n"
+  printf "  \033[1mWhat to do next:\033[0m\n\n"
+  printf "  \033[1;36m1. Launch DGX Mission Control\033[0m\n"
+  printf "     Double-click the desktop icon: \033[1m~/Desktop/DGX-Mission-Control.desktop\033[0m\n"
+  printf "     Or open your browser to: \033[1;33mhttp://localhost:8765\033[0m\n"
+  printf "     (Monitor GPU dials, memory usage, and access the RAG Studio)\n\n"
+  printf "  \033[1;36m2. Chat with Your Local 35B AI\033[0m\n"
+  printf "     Open your browser to: \033[1;33mhttp://localhost/\033[0m\n"
+  printf "     (Create your local account on first login and start chatting)\n\n"
+  printf "  \033[1;36m3. Upload & Ingest Documents\033[0m\n"
+  printf "     In DGX Mission Control, click \033[1m'Knowledge & RAG Studio'\033[0m\n"
+  printf "     Drag and drop any PDF/DOCX to retrain your vector knowledge base.\n\n"
+  printf "\033[1;32m══════════════════════════════════════════════════════════════════════\033[0m\n"
 fi
-echo "════════════════════════════════════════════════════════"

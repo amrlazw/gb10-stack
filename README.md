@@ -2,40 +2,67 @@
 
 Turnkey, modular enterprise installer for NVIDIA GB10 (Grace Blackwell) AI Workstations. One command deploys the complete enterprise LLM & RAG stack: Flagship 35B NVFP4 MoE inference (SGLang official, dedicated 70 GB allocation), local RAG (Open WebUI + MiniLM-L12 embeddings + Chroma vector store), enterprise observability (Prometheus/node-exporter/DCGM/Loki/Grafana, ESM-gated), and DGX Mission Control featuring the Knowledge & RAG Studio.
 
-## Install
+---
+
+## Quick Start (3-Step Installation Guide)
+
+Designed for both business operators and technical engineers. No prior Linux or Docker configuration required.
+
+### Step 1: Open Your Terminal
+On your NVIDIA GB10 desktop, open the **Terminal** application (or press `Ctrl` + `Alt` + `T` on your keyboard).
+
+### Step 2: Copy & Run the Installer
+Copy this command, paste it into your terminal, and press `Enter`:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/amrlazw/gb10-stack/main/get.sh | bash
 ```
 
-Private repository usage:
-```bash
-GB10_TOKEN=<ghp_token> curl -fsSL https://raw.githubusercontent.com/amrlazw/gb10-stack/main/get.sh | bash
+*(For private enterprise deployments with access tokens: `GB10_TOKEN=<token> curl -fsSL https://raw.githubusercontent.com/amrlazw/gb10-stack/main/get.sh | bash`)*
+
+#### Visual Installation Progress
+You will see a live progress bar tracking each stage of the installation automatically:
+
+```text
+╭──────────────────────────────────────────────────────────╮
+│  [████████████░░░░░░░░░░░░]  50%  Step 2/4: RAG & Open WebUI    │
+╰──────────────────────────────────────────────────────────╯
 ```
 
-### Preflight Requirements
+---
 
-1. **Hardware Target**: NVIDIA GB10 Grace Blackwell (Ubuntu 24.04 LTS + `7.0.0-nvidia` kernel).
-2. **Disk Storage**: Minimum 75 GB free on root filesystem (for 35B NVFP4 weights and container layers).
-3. **Ubuntu Pro** (optional for ESM telemetry): `sudo pro attach <token>` (enables Prometheus, node-exporter, DCGM, Loki, Grafana).
+### Step 3: What to Do When Installation Is Done
 
-### CLI Controls
+Once complete, your AI workstation is immediately ready to use:
+
+1. **Launch DGX Mission Control (Desktop App)**:
+   * Look at your computer desktop for the **`DGX Mission Control`** icon.
+   * Double-click it to open your system dashboard in your web browser (`http://localhost:8765`).
+   * Here you can monitor live Blackwell GPU temperatures, unified memory usage, and access the **Knowledge & RAG Studio**.
+
+2. **Chat with Your Local 35B AI**:
+   * Open your web browser (Chrome / Firefox) and go to:
+     👉 **`http://localhost/`**
+   * On your first visit, enter your name and password to create your local admin account.
+   * Start chatting with the **Qwen 3.6-35B MoE** model running 100% privately on your box.
+
+3. **Ingest & Search Your Own Documents**:
+   * In DGX Mission Control, click the **`📚 Knowledge & RAG Studio`** tab.
+   * Drag-and-drop your company PDFs, Word documents, or spreadsheets into the dropzone.
+   * Click **`⚡ Ingest & Retrain RAG`** to automatically chunk, embed, and index them into your local vector database.
+   * Click **`🎯 Run Retrieval Accuracy Benchmark`** to audit retrieval accuracy and view live Q&A citations.
+
+---
+
+## Advanced CLI Controls (For System Administrators)
 
 ```bash
 bash install.sh --plan          # zero-write dry run (audits hardware & disk without mutating system)
 bash install.sh                 # interactive turnkey deployment
 bash install.sh --force         # idempotent rerun / recovery
 bash install.sh --module rag    # targeted repair of an isolated module
-bash scripts/verify.sh          # post-install verification ledger
+bash scripts/verify.sh          # 14-point post-install verification ledger
 ```
-
-## Desktop Launcher
-
-When installation finishes, a desktop launcher is automatically created on the GB10 desktop:
-
-* **Location**: `~/Desktop/DGX-Mission-Control.desktop`
-* **Target URL**: `http://localhost:8765`
-* **Capabilities**: Double-clicking launches the DGX Mission Control telemetry dashboard, GPU dials, and the Knowledge & RAG Studio directly in the default browser.
 
 ## Resource Headroom & Capacity Analysis (Fresh Box)
 
