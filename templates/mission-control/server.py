@@ -4,7 +4,7 @@
 Standard library only. Listens on 127.0.0.1 so the controls are never exposed to the network.
 Samples the box once a second and keeps five minutes of history in memory.
 """
-import hmac, json, os, re, secrets, socket, subprocess, threading, time, urllib.parse, urllib.request
+import base64, hmac, json, os, re, secrets, socket, subprocess, threading, time, urllib.parse, urllib.request, uuid
 from collections import deque
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 
@@ -374,6 +374,177 @@ def remote_pin():
             f.write(f"{secrets.randbelow(10 ** 6):06d}" + chr(10))
     return open(PIN_FILE).read().strip()
 
+# ---------------------------------------------------------------- RAG Studio State & Workers
+RAG_LOCK = threading.Lock()
+RAG_STATE = {
+    "status": "idle",
+    "progress": 0,
+    "total": 0,
+    "logs": [],
+    "last_eval": None
+}
+
+def rag_log(msg, level="info"):
+    with RAG_LOCK:
+        ts = time.strftime("%H:%M:%S")
+        RAG_STATE["logs"].append({"time": ts, "msg": msg, "level": level})
+        if len(RAG_STATE["logs"]) > 60:
+            RAG_STATE["logs"].pop(0)
+
+def get_rag_collections():
+    try:
+        req = urllib.request.Request("http://127.0.0.1:80/api/v1/knowledge/")
+        with urllib.request.urlopen(req, timeout=4) as r:
+            res = json.loads(r.read())
+            return res.get("items", [])
+    except Exception as e:
+        return []
+
+def _guess_mime(fname):
+    ext = os.path.splitext(fname)[1].lower()
+    if ext in (".md", ".markdown"):
+        return "text/markdown"
+    if ext in (".txt", ".text"):
+        return "text/plain"
+    if ext == ".pdf":
+        return "application/pdf"
+    if ext == ".docx":
+        return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    if ext == ".csv":
+        return "text/csv"
+    return "text/plain"
+
+def _bg_ingest_worker(kid, cname, files):
+    with RAG_LOCK:
+        RAG_STATE["status"] = "ingesting"
+        RAG_STATE["progress"] = 0
+        RAG_STATE["total"] = len(files)
+    rag_log(f"Starting ingestion of {len(files)} document(s) into \"{cname}\"...", "info")
+    n_ok, n_fail = 0, 0
+    for idx, f in enumerate(files):
+        fname = f.get("filename", "doc.md")
+        raw_b64 = f.get("data", "")
+        mime = _guess_mime(fname)
+        try:
+            if "," in raw_b64:
+                raw_b64 = raw_b64.split(",", 1)[1]
+            content_bytes = base64.b64decode(raw_b64)
+            boundary = "----ragdrop" + uuid.uuid4().hex
+            body = (
+                f"--{boundary}\r\n"
+                f"Content-Disposition: form-data; name=\"file\"; filename=\"{fname}\"\r\n"
+                f"Content-Type: {mime}\r\n\r\n"
+            ).encode() + content_bytes + f"\r\n--{boundary}--\r\n".encode()
+            
+            ureq = urllib.request.Request("http://127.0.0.1:80/api/v1/files/", data=body,
+                                          headers={"Content-Type": f"multipart/form-data; boundary={boundary}"}, method="POST")
+            with urllib.request.urlopen(ureq, timeout=60) as ur:
+                fid = json.loads(ur.read()).get("id")
+            
+            # Give Open WebUI async file handler time to flush file to disk
+            time.sleep(1.2)
+            
+            areq = urllib.request.Request(f"http://127.0.0.1:80/api/v1/knowledge/{kid}/file/add",
+                                          data=json.dumps({"file_id": fid}).encode(),
+                                          headers={"Content-Type": "application/json"}, method="POST")
+            with urllib.request.urlopen(areq, timeout=30) as ar:
+                pass
+            n_ok += 1
+            rag_log(f"✓ Embedded & indexed: {fname} ({len(content_bytes)/1024:.1f} KB)", "ok")
+        except urllib.error.HTTPError as e:
+            n_fail += 1
+            err_body = e.read().decode('utf-8', 'ignore')[:120] if hasattr(e, 'read') else ''
+            rag_log(f"✗ Failed {fname}: HTTP {e.code} {err_body}", "bad")
+        except Exception as e:
+            n_fail += 1
+            rag_log(f"✗ Failed {fname}: {e}", "bad")
+        with RAG_LOCK:
+            RAG_STATE["progress"] = idx + 1
+        time.sleep(0.2)
+    
+    with RAG_LOCK:
+        RAG_STATE["status"] = "idle"
+    rag_log(f"Ingestion finished: {n_ok} succeeded, {n_fail} failed.", "ok" if n_fail == 0 else "warn")
+    S.event(f"RAG Studio: indexed {n_ok} doc(s) into \"{cname}\"")
+
+def _get_live_chat_model():
+    try:
+        req = urllib.request.Request("http://127.0.0.1:80/api/models")
+        with urllib.request.urlopen(req, timeout=3) as r:
+            data = json.loads(r.read()).get("data", [])
+            # Priority 1: external connection directly to SGLang
+            for m in data:
+                if m.get("connection_type") == "external":
+                    return m.get("id")
+            # Priority 2: explicit known models
+            for m in data:
+                if m.get("id") in ("qwen3.8-27b", "qwen3.6-35b"):
+                    return m.get("id")
+            if data:
+                return data[0].get("id")
+    except Exception:
+        pass
+    return "qwen3.8-27b"
+
+def _bg_eval_worker(kid, cname):
+    eval_model = _get_live_chat_model()
+    with RAG_LOCK:
+        RAG_STATE["status"] = "evaluating"
+        RAG_STATE["progress"] = 0
+        RAG_STATE["total"] = 5
+    rag_log(f"Running retrieval accuracy benchmark on \"{cname}\" (model: {eval_model})...", "info")
+    test_queries = [
+        ("TS-200 Warranty", "What is the warranty period of the TerraSense TS-200 Nova?", ["18", "month", "bulan"]),
+        ("Sensitivity Threshold", "What average sensitivity did TS-130 batch B0219 measure?", ["89.2"]),
+        ("RF Certificate", "Until what date is the TS-200 RF regulatory certificate valid?", ["2029"]),
+        ("GB10 Lab Tests", "How many words per second did the GB10 reach across 8 concurrent users in lab tests?", ["274"]),
+        ("Negative Refusal", "What is the name of the CEO of Meridian Sensors?", "REFUSE")
+    ]
+    passed = 0
+    t0 = time.time()
+    for idx, (tag, q, expect) in enumerate(test_queries):
+        try:
+            req_body = {
+                "model": eval_model,
+                "messages": [{"role": "user", "content": q}],
+                "files": [{"type": "collection", "id": kid}]
+            }
+            req = urllib.request.Request("http://127.0.0.1:80/api/chat/completions",
+                                         data=json.dumps(req_body).encode(),
+                                         headers={"Content-Type": "application/json"}, method="POST")
+            with urllib.request.urlopen(req, timeout=30) as r:
+                ans = json.loads(r.read())["choices"][0]["message"]["content"]
+            
+            if expect == "REFUSE":
+                ok = any(w in ans.lower() for w in ["not mentioned", "not provided", "no information", "cannot find", "tidak"])
+            else:
+                ok = all(any(alt in ans.lower() for alt in [term.lower()]) for term in expect)
+            if ok:
+                passed += 1
+                rag_log(f"[{idx+1}/5] PASS: {tag}", "ok")
+            else:
+                rag_log(f"[{idx+1}/5] GAP: {tag}", "bad")
+        except Exception as e:
+            rag_log(f"[{idx+1}/5] ERROR on {tag}: {e}", "bad")
+        with RAG_LOCK:
+            RAG_STATE["progress"] = idx + 1
+    
+    duration = time.time() - t0
+    score_pct = int((passed / len(test_queries)) * 100)
+    result = {
+        "score_pct": score_pct,
+        "passed": passed,
+        "total": len(test_queries),
+        "duration_s": round(duration, 1),
+        "collection": cname,
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+    }
+    with RAG_LOCK:
+        RAG_STATE["last_eval"] = result
+        RAG_STATE["status"] = "idle"
+    rag_log(f"Benchmark complete: {score_pct}% accuracy in {duration:.1f}s ({passed}/{len(test_queries)} passed)", "ok" if score_pct >= 80 else "warn")
+    S.event(f"RAG Benchmark on \"{cname}\": {score_pct}% grounded ({passed}/{len(test_queries)})")
+
 # ---------------------------------------------------------------- http
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *a, **kw):
@@ -392,6 +563,10 @@ class Handler(SimpleHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
+        if self.path == "/api/rag/status":
+            with RAG_LOCK:
+                st = dict(RAG_STATE)
+            return self.send_json({"ok": True, "state": st, "collections": get_rag_collections()})
         if self.path == "/api/stats":
             with S.lock:
                 return self.send_json({"snap": S.snap, "events": list(S.events), "seq": SEQ})
@@ -429,6 +604,45 @@ class Handler(SimpleHTTPRequestHandler):
         except Exception:
             req = {}
         now = time.time()
+        if self.path == "/api/rag/create":
+            name = req.get("name", "").strip()
+            desc = req.get("description", "").strip()
+            if not name:
+                return self.send_json({"ok": False, "msg": "Collection name is required"}, 400)
+            try:
+                creq = urllib.request.Request("http://127.0.0.1:80/api/v1/knowledge/create",
+                                              data=json.dumps({"name": name, "description": desc}).encode(),
+                                              headers={"Content-Type": "application/json"}, method="POST")
+                with urllib.request.urlopen(creq, timeout=10) as cr:
+                    res = json.loads(cr.read())
+                    rag_log(f"Created new collection: {name}", "ok")
+                    return self.send_json({"ok": True, "collection": res})
+            except Exception as e:
+                return self.send_json({"ok": False, "msg": str(e)}, 500)
+
+        if self.path == "/api/rag/ingest":
+            kid = req.get("collection_id")
+            cname = req.get("collection_name", "Knowledge Base")
+            files = req.get("files", [])
+            if not kid or not files:
+                return self.send_json({"ok": False, "msg": "Collection and files are required"}, 400)
+            with RAG_LOCK:
+                if RAG_STATE["status"] != "idle":
+                    return self.send_json({"ok": False, "msg": "Another RAG task is already running"}, 409)
+            threading.Thread(target=_bg_ingest_worker, args=(kid, cname, files), daemon=True).start()
+            return self.send_json({"ok": True, "msg": "Ingestion job started"})
+
+        if self.path == "/api/rag/eval":
+            kid = req.get("collection_id")
+            cname = req.get("collection_name", "Knowledge Base")
+            if not kid:
+                return self.send_json({"ok": False, "msg": "Collection ID is required"}, 400)
+            with RAG_LOCK:
+                if RAG_STATE["status"] != "idle":
+                    return self.send_json({"ok": False, "msg": "Another RAG task is already running"}, 409)
+            threading.Thread(target=_bg_eval_worker, args=(kid, cname), daemon=True).start()
+            return self.send_json({"ok": True, "msg": "Benchmark job started"})
+
         if self.path == "/api/unlock":
             if not remote:
                 return self.send_json({"ok": True})   # the booth screen is always unlocked

@@ -175,6 +175,40 @@ body.remote:not(.unlocked) .svc .actions button, body.remote:not(.unlocked) #seq
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 .toast.bad { border-color: rgba(255,92,92,.5); }
 
+/* Navigation Tabs */
+.nav-tabs { display: flex; gap: 8px; margin: 6px 0 12px; border-bottom: 1px solid var(--line); padding-bottom: 10px; }
+.nav-tab { padding: 9px 18px; border-radius: 12px; background: rgba(148, 170, 200, .06); border: 1px solid var(--line);
+  color: var(--dim); font-family: var(--disp); font-size: 14px; font-weight: 600; cursor: pointer; transition: all .2s; }
+.nav-tab:hover { background: rgba(148, 170, 200, .12); color: var(--text); }
+.nav-tab.active { background: var(--green-soft); border-color: var(--green); color: var(--text); }
+
+/* RAG Studio Styles */
+.rag-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px; }
+@media (max-width: 1100px) { .rag-layout { grid-template-columns: 1fr; } }
+.rag-colls { display: grid; gap: 10px; max-height: 280px; overflow-y: auto; margin-top: 10px; }
+.rag-coll-item { background: rgba(148,170,200,.04); border: 1px solid var(--line); border-radius: 12px; padding: 12px;
+  display: flex; justify-content: space-between; align-items: center; }
+.rag-coll-info h4 { font-size: 14px; font-weight: 600; color: var(--text); }
+.rag-coll-info p { font-size: 12px; color: var(--dim); margin-top: 3px; max-width: 480px; }
+.rag-coll-meta { text-align: right; }
+.dropzone { border: 2px dashed var(--line-strong); border-radius: 14px; padding: 28px; text-align: center;
+  background: rgba(148,170,200,.02); cursor: pointer; transition: all .2s; }
+.dropzone:hover, .dropzone.dragover { border-color: var(--green); background: var(--green-soft); }
+.dropzone p { color: var(--dim); font-size: 13px; margin-top: 6px; }
+.file-queue { margin-top: 12px; display: grid; gap: 6px; max-height: 140px; overflow-y: auto; }
+.file-item { display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,.25);
+  padding: 6px 12px; border-radius: 8px; font-size: 12px; font-family: var(--mono); }
+.rag-console { background: #05080E; border: 1px solid var(--line); border-radius: 12px; padding: 12px;
+  font-family: var(--mono); font-size: 11.5px; height: 160px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+.rag-console .log-ok { color: var(--ok); }
+.rag-console .log-warn { color: var(--amber); }
+.rag-console .log-bad { color: var(--red); }
+.rag-console .log-info { color: var(--dim); }
+.eval-score-card { background: rgba(118, 185, 0, .08); border: 1px solid var(--green); border-radius: 14px; padding: 16px; margin-top: 12px; }
+.eval-big { font-family: var(--disp); font-size: 32px; font-weight: 700; color: var(--green); }
+.select-box, .text-input { width: 100%; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--line-strong);
+  background: #0A0F18; color: var(--text); font-family: var(--body); font-size: 13px; outline: none; }
+
 @media (max-width: 1350px) { .gauges { grid-template-columns: repeat(2, 1fr); } .row2, .row4 { grid-template-columns: 1fr; } .svcs { grid-template-columns: 1fr; } }
 </style>
 </head>
@@ -198,6 +232,12 @@ body.remote:not(.unlocked) .svc .actions button, body.remote:not(.unlocked) #seq
     </div>
   </header>
 
+  <nav class="nav-tabs">
+    <button class="nav-tab active" id="tabTelemetry" onclick="switchTab('telemetry')">⚡ Mission Telemetry &amp; Stack</button>
+    <button class="nav-tab" id="tabRag" onclick="switchTab('rag')">📚 Knowledge &amp; RAG Studio</button>
+  </nav>
+
+  <div id="viewTelemetry" style="display:grid; gap:12px;">
   <section class="gauges" id="gauges"></section>
 
   <section class="row2">
@@ -247,6 +287,94 @@ body.remote:not(.unlocked) .svc .actions button, body.remote:not(.unlocked) #seq
         <div class="log" id="log"></div>
       </div>
   </section>
+  </div>
+
+  <div id="viewRag" style="display:none; display:grid; gap:16px;">
+    <!-- Collections Overview Card -->
+    <section class="card">
+      <div class="hdr">
+        <div>
+          <h2>Enterprise Knowledge Bases</h2>
+          <p class="muted" style="font-size:12.5px;margin-top:2px;">Live vector collections serving Open WebUI &amp; local inference agents</p>
+        </div>
+        <button class="btn go" onclick="toggleNewCollectionModal()" style="padding:7px 14px;font-size:12.5px;">+ Create Collection</button>
+      </div>
+      <div class="rag-colls" id="ragCollsList">
+        <div class="muted">Loading collections...</div>
+      </div>
+    </section>
+
+    <!-- 2-Column: Ingestion on Left, Retrieval Benchmark on Right -->
+    <div class="rag-layout">
+      <!-- Left Column: Ingest & Retrain Studio -->
+      <section class="card">
+        <div class="hdr">
+          <h2>Document Ingestion &amp; Retraining</h2>
+          <span class="label" id="ragJobStatus">IDLE</span>
+        </div>
+        <div style="margin-bottom:12px;">
+          <label class="label" style="display:block;margin-bottom:6px;">Target Knowledge Collection</label>
+          <select class="select-box" id="ragTargetColl"></select>
+        </div>
+        <div class="dropzone" id="ragDropzone" onclick="$('ragFileInput').click()">
+          <input type="file" id="ragFileInput" multiple style="display:none" onchange="handleFileSelect(event)">
+          <div style="font-size:26px;">📁</div>
+          <b style="font-size:14px;display:block;margin-top:6px;">Drag &amp; drop documents here</b>
+          <p>Supports PDF, Markdown, DOCX, TXT, CSV (Auto-chunked &amp; vectorized via MiniLM-L12)</p>
+        </div>
+        <div class="file-queue" id="fileQueue"></div>
+        <div style="margin-top:14px;display:flex;gap:10px;justify-content:flex-end;">
+          <button class="btn" id="btnClearQueue" onclick="clearFileQueue()" style="display:none;">Clear</button>
+          <button class="btn go" id="btnIngest" onclick="startIngest()" disabled style="padding:9px 18px;font-size:13px;">⚡ Ingest &amp; Retrain RAG</button>
+        </div>
+        <div style="margin-top:16px;">
+          <div class="hdr"><span class="label">Ingestion &amp; Vector Log</span><span class="label" id="ragProgressText"></span></div>
+          <div class="rag-console" id="ragConsole">
+            <div class="log-info">[ready] Waiting for document upload...</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right Column: 1-Click RAG Evaluation Benchmark -->
+      <section class="card">
+        <div class="hdr">
+          <h2>Automated Retrieval &amp; Accuracy Benchmark</h2>
+          <span class="label">GOLDEN EVAL</span>
+        </div>
+        <p class="muted" style="line-height:1.5;margin-bottom:14px;">
+          Execute automated ground-truth evaluation across the active collection. Tests factual recall, citation accuracy, and hallucination refusal.
+        </p>
+        <div style="margin-bottom:14px;">
+          <label class="label" style="display:block;margin-bottom:6px;">Evaluate Collection</label>
+          <select class="select-box" id="ragEvalColl"></select>
+        </div>
+        <button class="btn" id="btnRunEval" onclick="startEval()" style="width:100%;padding:10px;font-size:13px;background:rgba(118,185,0,.15);border-color:var(--green);color:var(--text);font-weight:600;">
+          🎯 Run Retrieval Accuracy Benchmark
+        </button>
+
+        <div id="evalScoreCard" style="display:none;" class="eval-score-card">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div>
+              <span class="label" style="color:var(--dim);">Grounded Accuracy</span>
+              <div class="eval-big" id="evalScorePct">--%</div>
+            </div>
+            <div style="text-align:right;">
+              <span class="label" style="color:var(--dim);">Latency</span>
+              <div style="font-family:var(--mono);font-size:16px;color:var(--text);" id="evalDuration">--s</div>
+            </div>
+          </div>
+          <div style="font-size:12px;color:var(--dim);margin-top:8px;" id="evalMeta"></div>
+        </div>
+
+        <div style="margin-top:16px;">
+          <div class="hdr"><span class="label">Benchmark Queries &amp; Verification</span></div>
+          <div class="rag-console" id="evalConsole">
+            <div class="log-info">[idle] Press 'Run Retrieval Accuracy Benchmark' to start.</div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
 
   <footer class="foot">
     <span id="specs">NVIDIA GB10 · 20-core Arm (10× X925 + 10× A725) · Blackwell GPU (sm_121) · 128 GB unified LPDDR5x · 273 GB/s</span>
@@ -260,6 +388,25 @@ body.remote:not(.unlocked) .svc .actions button, body.remote:not(.unlocked) #seq
   <p>Enter the Mission Control PIN. Start/Stop stays on for 30 minutes on this device, and every action is logged with your Tailscale name.</p>
   <input id="pinIn" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="32">
   <div class="row"><button class="btn" id="pinNo">Cancel</button><button class="btn go" id="pinYes">Unlock</button></div></div></div>
+
+<div class="modal" id="newCollModal">
+  <div class="box">
+    <h3>+ Create Knowledge Collection</h3>
+    <p>Define an isolated vector namespace for a new department or documentation set.</p>
+    <div style="margin-bottom:12px;">
+      <label class="label" style="display:block;margin-bottom:6px;">Collection Name</label>
+      <input type="text" id="newCollName" class="text-input" placeholder="e.g. Finance &amp; Auditing">
+    </div>
+    <div style="margin-bottom:18px;">
+      <label class="label" style="display:block;margin-bottom:6px;">Description</label>
+      <input type="text" id="newCollDesc" class="text-input" placeholder="e.g. FY2026 Audit Reports, Policies">
+    </div>
+    <div class="row">
+      <button class="btn" onclick="toggleNewCollectionModal()">Cancel</button>
+      <button class="btn go" onclick="submitNewCollection()">Create</button>
+    </div>
+  </div>
+</div>
 <div class="toast" id="toast"></div>
 
 <!--BOOT-->
@@ -526,7 +673,285 @@ if (window.__BOOT) {  // server-embedded snapshot: paint real numbers before the
     const h = await fetch("/api/history").then((r) => r.json());
     ["gpu", "power", "temp", "mem", "cpu", "tok"].forEach((k) => (H[k] = (h[k] || []).slice(-MAXH)));
   } catch (e) {}
-  tick(); setInterval(tick, 1000);
+  /* ---------- RAG Studio JS */
+let CURRENT_TAB = 'telemetry';
+let STAGED_FILES = [];
+let RAG_POLL_INTERVAL = null;
+
+function switchTab(t) {
+  CURRENT_TAB = t;
+  if (t === 'telemetry') {
+    $('viewTelemetry').style.display = 'grid';
+    $('viewRag').style.display = 'none';
+    $('tabTelemetry').classList.add('active');
+    $('tabRag').classList.remove('active');
+    if (RAG_POLL_INTERVAL) { clearInterval(RAG_POLL_INTERVAL); RAG_POLL_INTERVAL = null; }
+  } else {
+    $('viewTelemetry').style.display = 'none';
+    $('viewRag').style.display = 'grid';
+    $('tabTelemetry').classList.remove('active');
+    $('tabRag').classList.add('active');
+    loadRagStatus();
+    if (!RAG_POLL_INTERVAL) RAG_POLL_INTERVAL = setInterval(loadRagStatus, 2000);
+  }
+}
+
+async function loadRagStatus() {
+  try {
+    const res = await fetch("/api/rag/status").then(r => r.json());
+    if (!res.ok) return;
+    
+    const colls = res.collections || [];
+    const listEl = $("ragCollsList");
+    const targetSel = $("ragTargetColl");
+    const evalSel = $("ragEvalColl");
+    
+    if (colls.length === 0) {
+      listEl.innerHTML = '<div class="muted">No knowledge collections found in Open WebUI. Click "+ Create Collection" to start.</div>';
+    } else {
+      const prevTarget = targetSel.value;
+      const prevEval = evalSel.value;
+      
+      listEl.innerHTML = colls.map(c => `
+        <div class="rag-coll-item">
+          <div class="rag-coll-info">
+            <h4>${escapeHtml(c.name || "Untitled")}</h4>
+            <p>${escapeHtml(c.description || "No description")}</p>
+          </div>
+          <div class="rag-coll-meta">
+            <span class="mono" style="font-size:13px;font-weight:600;color:var(--text);">${c.file_count || (c.files ? c.files.length : 0)} docs</span>
+            <div style="margin-top:4px;">
+              <a href="/#workspace/knowledge" target="_blank" class="btn" style="padding:4px 8px;font-size:11px;">Open in WebUI ↗</a>
+            </div>
+          </div>
+        </div>
+      `).join("");
+      
+      const opts = colls.map(c => `<option value="${c.id}">${escapeHtml(c.name)} (${c.file_count || (c.files ? c.files.length : 0)} docs)</option>`).join("");
+      if (targetSel.innerHTML !== opts) {
+        targetSel.innerHTML = opts;
+        if (prevTarget) targetSel.value = prevTarget;
+      }
+      if (evalSel.innerHTML !== opts) {
+        evalSel.innerHTML = opts;
+        if (prevEval) evalSel.value = prevEval;
+      }
+    }
+    
+    const st = res.state || {};
+    $("ragJobStatus").textContent = (st.status || "IDLE").toUpperCase();
+    if (st.status === "ingesting") {
+      $("ragJobStatus").className = "label dot ok pulse";
+      $("ragProgressText").textContent = `Indexing ${st.progress} / ${st.total}...`;
+      $("btnIngest").disabled = true;
+    } else if (st.status === "evaluating") {
+      $("ragJobStatus").className = "label dot warn pulse";
+      $("ragProgressText").textContent = `Testing query ${st.progress} / ${st.total}...`;
+      $("btnRunEval").disabled = true;
+    } else {
+      $("ragJobStatus").className = "label";
+      $("ragProgressText").textContent = "";
+      $("btnIngest").disabled = STAGED_FILES.length === 0;
+      $("btnRunEval").disabled = colls.length === 0;
+    }
+    
+    if (st.logs && st.logs.length > 0) {
+      $("ragConsole").innerHTML = st.logs.map(l => `
+        <div class="log-${l.level}">
+          <span style="color:var(--faint);margin-right:6px;">${l.time}</span>${escapeHtml(l.msg)}
+        </div>
+      `).join("");
+      $("ragConsole").scrollTop = $("ragConsole").scrollHeight;
+    }
+    
+    if (st.last_eval) {
+      const ev = st.last_eval;
+      $("evalScoreCard").style.display = "block";
+      $("evalScorePct").textContent = ev.score_pct + "%";
+      $("evalScorePct").style.color = ev.score_pct >= 80 ? "var(--green)" : "var(--amber)";
+      $("evalDuration").textContent = ev.duration_s + "s";
+      $("evalMeta").textContent = `${ev.passed}/${ev.total} queries passed on "${ev.collection}" (${ev.timestamp})`;
+    }
+  } catch (e) {
+    console.error("RAG status error:", e);
+  }
+}
+
+function escapeHtml(str) {
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+const dropzone = $("ragDropzone");
+if (dropzone) {
+  ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(evName => {
+    dropzone.addEventListener(evName, (e) => { e.preventDefault(); e.stopPropagation(); }, false);
+  });
+  ['dragenter', 'dragover'].forEach(evName => {
+    dropzone.addEventListener(evName, () => dropzone.classList.add('dragover'), false);
+  });
+  ['dragleave', 'drop'].forEach(evName => {
+    dropzone.addEventListener(evName, () => dropzone.classList.remove('dragover'), false);
+  });
+  dropzone.addEventListener('drop', (e) => {
+    const dt = e.dataTransfer;
+    if (dt && dt.files) handleFiles(dt.files);
+  });
+}
+
+function handleFileSelect(e) {
+  if (e.target.files) handleFiles(e.target.files);
+}
+
+function handleFiles(files) {
+  for (let f of files) {
+    STAGED_FILES.push(f);
+  }
+  renderFileQueue();
+}
+
+function renderFileQueue() {
+  const qEl = $("fileQueue");
+  if (STAGED_FILES.length === 0) {
+    qEl.innerHTML = "";
+    $("btnClearQueue").style.display = "none";
+    $("btnIngest").disabled = true;
+    return;
+  }
+  $("btnClearQueue").style.display = "inline-block";
+  $("btnIngest").disabled = false;
+  qEl.innerHTML = STAGED_FILES.map((f, i) => `
+    <div class="file-item">
+      <span>📄 ${escapeHtml(f.name)} (${(f.size / 1024).toFixed(1)} KB)</span>
+      <button class="btn" onclick="removeStagedFile(${i})" style="padding:2px 6px;font-size:11px;">✕</button>
+    </div>
+  `).join("");
+}
+
+function removeStagedFile(i) {
+  STAGED_FILES.splice(i, 1);
+  renderFileQueue();
+}
+
+function clearFileQueue() {
+  STAGED_FILES = [];
+  renderFileQueue();
+}
+
+async function startIngest() {
+  if (STAGED_FILES.length === 0) return;
+  const targetColl = $("ragTargetColl").value;
+  const targetName = $("ragTargetColl").selectedOptions[0]?.text || "Knowledge Base";
+  if (!targetColl) { toast("Please select a target collection", true); return; }
+  
+  toast("Encoding and uploading documents...");
+  $("btnIngest").disabled = true;
+  
+  const encodedFiles = [];
+  for (let file of STAGED_FILES) {
+    const b64 = await readFileAsBase64(file);
+    encodedFiles.push({ filename: file.name, data: b64 });
+  }
+  
+  try {
+    const res = await fetch("/api/rag/ingest", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        collection_id: targetColl,
+        collection_name: targetName,
+        files: encodedFiles
+      })
+    }).then(r => r.json());
+    
+    if (res.ok) {
+      toast("Ingestion and re-indexing initiated!");
+      clearFileQueue();
+      loadRagStatus();
+    } else {
+      toast(res.msg || "Failed to start ingestion", true);
+      $("btnIngest").disabled = false;
+    }
+  } catch (e) {
+    toast("Network error starting ingestion", true);
+    $("btnIngest").disabled = false;
+  }
+}
+
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function startEval() {
+  const evalColl = $("ragEvalColl").value;
+  const evalName = $("ragEvalColl").selectedOptions[0]?.text || "Knowledge Base";
+  if (!evalColl) { toast("Please select a collection to evaluate", true); return; }
+  
+  toast("Starting RAG accuracy benchmark...");
+  $("btnRunEval").disabled = true;
+  $("evalConsole").innerHTML = '<div class="log-info">[running] Firing ground-truth evaluation queries against local LLM...</div>';
+  
+  try {
+    const res = await fetch("/api/rag/eval", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        collection_id: evalColl,
+        collection_name: evalName
+      })
+    }).then(r => r.json());
+    
+    if (res.ok) {
+      loadRagStatus();
+    } else {
+      toast(res.msg || "Failed to start evaluation", true);
+      $("btnRunEval").disabled = false;
+    }
+  } catch (e) {
+    toast("Network error starting evaluation", true);
+    $("btnRunEval").disabled = false;
+  }
+}
+
+function toggleNewCollectionModal() {
+  const m = $("newCollModal");
+  m.className = m.className.includes("show") ? "modal" : "modal show";
+  if (m.className.includes("show")) {
+    $("newCollName").value = "";
+    $("newCollDesc").value = "";
+    setTimeout(() => $("newCollName").focus(), 50);
+  }
+}
+
+async function submitNewCollection() {
+  const name = $("newCollName").value.trim();
+  const desc = $("newCollDesc").value.trim();
+  if (!name) { toast("Please enter a collection name", true); return; }
+  
+  try {
+    const res = await fetch("/api/rag/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: name, description: desc })
+    }).then(r => r.json());
+    
+    if (res.ok) {
+      toast(`Created collection: ${name}`);
+      toggleNewCollectionModal();
+      loadRagStatus();
+    } else {
+      toast(res.msg || "Failed to create collection", true);
+    }
+  } catch (e) {
+    toast("Error creating collection", true);
+  }
+}
+
+tick(); setInterval(tick, 1000);
 })();
 </script>
 </body>
