@@ -76,5 +76,30 @@ EOF
     ok "mission-control.service running (:$mc_port)"
   fi
 
-  info "Mission Control: http://127.0.0.1:$mc_port (tailnet URL after module 50)"
+  # ── 5. desktop shortcut on GB10 desktop ──────────────────────────────────
+  local desktop_dir="$HOME/Desktop"
+  local desktop_file="$desktop_dir/DGX-Mission-Control.desktop"
+  if [ "$GBPLAN" = "1" ]; then
+    plan "create desktop shortcut -> $desktop_file"
+  else
+    mkdir -p "$desktop_dir"
+    cat > "$desktop_file" <<EOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Terminal=false
+Exec=xdg-open http://127.0.0.1:$mc_port
+Name=DGX Mission Control
+Comment=NVIDIA GB10 Mission Control Dashboard & RAG Studio
+Icon=utilities-system-monitor
+Categories=System;Utility;Development;
+EOF
+    chmod +x "$desktop_file"
+    if command -v gio >/dev/null 2>&1; then
+      gio set "$desktop_file" metadata::trusted true 2>/dev/null || true
+    fi
+    ok "desktop shortcut created -> $desktop_file"
+  fi
+
+  info "Mission Control: http://127.0.0.1:$mc_port"
 }

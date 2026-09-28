@@ -33,7 +33,7 @@ done
 # ── root refusal (before ANY write; see 2026-09-13 incident) ────────────
 if [ "$(id -u)" = "0" ] && [ -n "${SUDO_USER:-}" ]; then
   echo "ERROR: this installer was piped into sudo. Refusing before any write." >&2
-  echo "  re-run without sudo in front: curl -fsSL <REPO_URL>/get.sh | bash" >&2
+  echo "  re-run without sudo in front: curl -fsSL https://raw.githubusercontent.com/amrlazw/gb10-stack/main/get.sh | bash" >&2
   exit 1
 fi
 

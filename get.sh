@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # gb10-stack one-liner bootstrap.
 #
-#   curl -fsSL <REPO_URL>/get.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/amrlazw/gb10-stack/main/get.sh | bash
 #
 # Private repo: pass a GitHub token (fine-grained, Contents:Read on this repo):
-#   GB10_TOKEN=*** curl -fsSL <REPO_URL>/get.sh | bash
+#   GB10_TOKEN=*** curl -fsSL https://raw.githubusercontent.com/amrlazw/gb10-stack/main/get.sh | bash
 #
 # NEVER pipe this into sudo. install.sh refuses root itself before any write,
 # and calls sudo only for the steps that need it (same convention as the

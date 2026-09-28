@@ -35,14 +35,9 @@ add() { # add '<json-object>'
   SERVICES=$(echo "$SERVICES" | python3 -c 'import json,sys; a=json.load(sys.stdin); a.append(json.loads(sys.argv[1])); print(json.dumps(a))' "$1")
 }
 
-# ── 27B lane (upstream: systemd unit qwen38-sglang.service) ───────────────
-if unit_up qwen38-sglang.service; then
-  add "{\"id\":\"llm27b\",\"cat\":\"model\",\"name\":\"Qwen3.8-27B\",\"engine\":\"SGLang + DFlash2\",\"port\":$PORT_27B,\"kind\":\"llm\",\"container\":\"qwen38-sglang-run\",\"need_gb\":62}"
-fi
-
-# ── 35B lane (gb10-stack: systemd unit qwen38-35b.service) ────────────────
+# ── 35B Flagship Solo Lane (gb10-stack: systemd unit qwen38-35b.service) ───
 if unit_up qwen38-35b.service; then
-  add "{\"id\":\"llm35b\",\"cat\":\"model\",\"name\":\"Qwen3.6-35B-A3B\",\"engine\":\"SGLang · NVFP4 MoE\",\"port\":$PORT_35B,\"kind\":\"sys\",\"unit\":\"qwen38-35b.service\",\"need_gb\":60}"
+  add "{\"id\":\"llm35b\",\"cat\":\"model\",\"name\":\"Qwen3.6-35B-A3B\",\"engine\":\"SGLang · NVFP4 MoE\",\"port\":$PORT_35B,\"kind\":\"sys\",\"unit\":\"qwen38-35b.service\",\"need_gb\":70}"
 fi
 
 # ── Open WebUI (docker) ───────────────────────────────────────────────────
@@ -50,12 +45,7 @@ if container_exists open-webui; then
   add "{\"id\":\"webui\",\"cat\":\"app\",\"name\":\"Open WebUI\",\"engine\":\"chat · qwen3.6-35b\",\"port\":80,\"kind\":\"docker\",\"containers\":[\"open-webui\",\"open-webui-proxy\"],\"need_gb\":2,\"url\":\"http://localhost/\",\"remote_url\":\"$(rurl 10000)\"}"
 fi
 
-# ── Sunshine (remote desktop, user unit) ──────────────────────────────────
-if unit_up sunshine.service; then
-  add "{\"id\":\"sunshine\",\"cat\":\"system\",\"name\":\"Sunshine\",\"engine\":\"remote desktop stream\",\"port\":47990,\"kind\":\"user\",\"unit\":\"sunshine.service\",\"url\":\"https://localhost:47990\",\"remote_url\":\"$(rurl 47990)\"}"
-fi
-
-# ── (future opt-in lanes append here; vision is intentionally absent) ─────
+# ── (future opt-in lanes append here; vision and remote desktop absent) ───
 
 mkdir -p "$MC_HOME"
 python3 -c 'import json,sys

@@ -37,16 +37,12 @@ def _load_services():
         {"id": "llm35b", "cat": "model", "name": "Qwen3.6-35B-A3B", "engine": "SGLang · NVFP4 MoE", "port": 30000, "kind": "sys",
          "unit": "qwen38-35b.service", "need_gb": 70},
         {"id": "webui", "cat": "app", "name": "Open WebUI", "engine": "chat · qwen3.6-35b", "port": 80, "kind": "docker",
-         "containers": ["open-webui", "open-webui-proxy"], "need_gb": 2, "url": "http://localhost/"},
-        {"id": "sunshine", "cat": "system", "name": "Sunshine", "engine": "remote desktop stream", "port": 47990, "kind": "user",
-         "unit": "sunshine.service", "url": "https://localhost:47990"},
+         "containers": ["open-webui", "open-webui-proxy"], "need_gb": 2, "url": "http://localhost/"}
     ], ""
 SERVICES, _TAILNET_ORIGIN_CFG = _load_services()
 SVC = {s["id"]: s for s in SERVICES}
-LLM_ENV = ("DRAFT2_REPO=maurienne-ai/Qwen3.8-27B-DFlash2-NVFP4-RTNcal DRAFT2_REV=bd7a934213c47a9e7ef69eef36bb3325f47fd1f1 "
-           "DRAFT2_QUANT=modelopt_fp4 DRAFT2_TOKENS=16")
-LLM_START = {"llm27b": f"cd {HOME}/dgx-spark-qwen38 && {LLM_ENV} nohup ./run.sh > {HOME}/qwen38-run.log 2>&1 < /dev/null &"}
-LLM_STOP = {"llm27b": "docker stop -t 20 qwen38-sglang-run"}
+LLM_START = {}
+LLM_STOP = {}
 
 # ---------------------------------------------------------------- helpers
 def sh(cmd, timeout=4):

@@ -62,15 +62,9 @@ check "mission control user unit active" unit_active mission-control.service use
 check "mission control up (:8765)" port_open 8765
 check "mc.json generated" test -f "$HOME/mission-control/mc.json"
 check "mc.json has no vision entries" bash -c "! grep -qE 'arcade|vlm|faceswap|moondream' $HOME/mission-control/mc.json"
-check "remote PIN present (mode 600)" bash -c "test -f $HOME/mission-control/remote_pin && [ \$(stat -c %a $HOME/mission-control/remote_pin) = 600 ]"
+check "desktop shortcut present" test -f "$HOME/Desktop/DGX-Mission-Control.desktop"
 
-# ── L5: remote ──────────────────────────────────────────────────────────
-check "tailscale running" tailscale status
-check "serve :10000 -> :80" bash -c "tailscale serve status | grep -q ':10000'"
-check "serve :8443 -> :8765" bash -c "tailscale serve status | grep -q ':8443'"
-check "sunshine unit (user) active" unit_active sunshine.service user
-
-# ── L6: integrity ───────────────────────────────────────────────────────
+# ── L5: integrity ───────────────────────────────────────────────────────
 check "no leftover .gbstack.bak in /etc (or inspect them)" bash -c "! ls /etc/*.gbstack.bak 2>/dev/null | grep -q ."
 check "state file consistent" test -f "$GBSTACK_HOME/state"
 

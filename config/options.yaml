@@ -5,14 +5,13 @@
 
 options:
   - id: option-1
-    name: "Full Stack (non-vision)"
+    name: "Full Stack (Flagship 35B Solo)"
     default: true
     modules:
       - llm-serving
       - rag
       - observability
       - mission-control
-      - remote
 
   # future options, e.g.:
   # - id: option-2
