@@ -78,6 +78,46 @@ echo " modules: $(echo "$GB_MODULES" | tr '\n' ' ')"
 echo " min free: ${GB_MIN_FREE} GB"
 echo "════════════════════════════════════════════════════════"
 
+ensure_docker() {
+  if ! command -v docker >/dev/null 2>&1; then
+    info "Docker is not installed — installing Docker Engine automatically..."
+    if [ "$GB_PLAN" = "1" ]; then
+      plan "install docker.io docker-compose-v2 and add $GB_USER to docker group"
+    else
+      run_root "apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y docker.io docker-compose-v2"
+      run_root "usermod -aG docker $GB_USER"
+      run_root "systemctl enable --now docker"
+      ok "Docker installed and service started"
+    fi
+  fi
+
+  # Ensure NVIDIA Container Toolkit for GPU acceleration in Docker
+  if ! command -v nvidia-ctk >/dev/null 2>&1; then
+    info "NVIDIA Container Toolkit not detected — installing..."
+    if [ "$GB_PLAN" = "1" ]; then
+      plan "install nvidia-container-toolkit and configure docker runtime"
+    else
+      run_root "curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg 2>/dev/null || true"
+      run_root "curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' > /etc/apt/sources.list.d/nvidia-container-toolkit.list"
+      run_root "apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y nvidia-container-toolkit"
+      run_root "nvidia-ctk runtime configure --runtime=docker"
+      run_root "systemctl restart docker"
+      ok "NVIDIA Container Toolkit configured"
+    fi
+  fi
+
+  # Start daemon if stopped and grant socket permissions for active non-root session
+  if [ "$GB_PLAN" != "1" ]; then
+    if ! docker info >/dev/null 2>&1; then
+      run_root "systemctl enable --now docker"
+      sleep 2
+      if ! docker info >/dev/null 2>&1; then
+        run_root "chmod 666 /var/run/docker.sock 2>/dev/null || true"
+      fi
+    fi
+  fi
+}
+
 # ── preflight (always; read-only in plan mode) ──────────────────────────
 preflight() {
   info "preflight: hardware & disk"
@@ -91,7 +131,12 @@ preflight() {
   ok "disk: ${free} GB free (need ${GB_MIN_FREE})"
   if [ "$GB_PLAN" != "1" ]; then
     command -v sudo >/dev/null || die "sudo is required for system steps"
-    docker_ok || die "docker daemon not reachable (start it or check group membership)"
+    ensure_docker
+    docker_ok || die "docker daemon not reachable after installation attempt (check systemctl status docker)"
+  else
+    if ! command -v docker >/dev/null 2>&1; then
+      plan "install docker.io, docker-compose-v2, and nvidia-container-toolkit"
+    fi
   fi
 }
 preflight
