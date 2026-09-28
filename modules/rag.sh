@@ -2,7 +2,10 @@
 # Module 20 — RAG (Open WebUI + nginx proxy + config-driven rag-prep tools).
 #  Open WebUI: ghcr.io/open-webui/open-webui:main, host network, named volume
 #              open-webui -> /app/backend/data, 12 GB cap. Embeddings run
-#              in-process (sentence-transformers) — nothing external to wire.
+#              in-process via BAAI/bge-m3 (1024-d) + mmarco-mMiniLMv2
+#              cross-encoder reranker — nothing external to wire. Chunking
+#              & hybrid-search weights are runtime config (webui.db), set
+#              through the Mission Control RAG Studio API.
 #  nginx: nginx:alpine, host network, :80 + :3000 -> 127.0.0.1:8080, websocket
 #         upgrade, 500M body. Booth auto-login session is OPT-IN (default off).
 #  rag-prep: convert.py / ingest.py / eval.py, all read a single config file
@@ -56,10 +59,14 @@ mod_install() {
         -e "OPENAI_API_BASE_URL=http://localhost:$port_27b/v1" \
         -e "OPENAI_API_KEY=${webui_api_key}" \
         -e "OPEN_WEBUI_DEFAULT_MODELS=qwen3.6-35b" \
-        -e "RAG_EMBEDDING_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2" \
-        -e "USE_EMBEDDING_MODEL_DOCKER=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2" \
-        -e "AUXILIARY_EMBEDDING_MODEL=TaylorAI/bge-micro-v2" \
-        -e "USE_AUXILIARY_EMBEDDING_MODEL_DOCKER=TaylorAI/bge-micro-v2" \
+        -e "RAG_EMBEDDING_MODEL=BAAI/bge-m3" \
+        -e "USE_EMBEDDING_MODEL_DOCKER=BAAI/bge-m3" \
+        -e "RAG_RERANKING_MODEL=cross-encoder/mmarco-mMiniLMv2-L12-H384-v1" \
+        -e "CHUNK_SIZE=1200" \
+        -e "CHUNK_OVERLAP=200" \
+        -e "ENABLE_RAG_HYBRID_SEARCH=True" \
+        -e "RAG_TOP_K=12" \
+        -e "TOP_K_RERANKER=5" \
         -e "HF_HOME=/app/backend/data/cache/embedding/models" \
         -e "SENTENCE_TRANSFORMERS_HOME=/app/backend/data/cache/embedding/models" \
         -e "TIKTOKEN_CACHE_DIR=/app/backend/data/cache/tiktoken" \
