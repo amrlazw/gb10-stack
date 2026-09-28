@@ -807,12 +807,23 @@ async function loadRagStatus() {
     }
     
     if (st.logs && st.logs.length > 0) {
-      $("ragConsole").innerHTML = st.logs.map(l => `
+      const allLogsHtml = st.logs.map(l => `
         <div class="log-${l.level}">
           <span style="color:var(--faint);margin-right:6px;">${l.time}</span>${escapeHtml(l.msg)}
         </div>
       `).join("");
+      $("ragConsole").innerHTML = allLogsHtml;
       $("ragConsole").scrollTop = $("ragConsole").scrollHeight;
+
+      const evalLogs = st.logs.filter(l => l.msg.includes("Q:") || l.msg.includes("A:") || l.msg.includes("Benchmark") || l.msg.includes("PASS:") || l.msg.includes("GAP on") || l.msg.includes("Test ") || l.msg.includes("Auto-Retrain") || l.msg.includes("dynamic tests"));
+      if (evalLogs.length > 0 && $("evalConsole")) {
+        $("evalConsole").innerHTML = evalLogs.map(l => `
+          <div class="log-${l.level}">
+            <span style="color:var(--faint);margin-right:6px;">${l.time}</span>${escapeHtml(l.msg)}
+          </div>
+        `).join("");
+        $("evalConsole").scrollTop = $("evalConsole").scrollHeight;
+      }
     }
     
     if (st.last_eval) {
