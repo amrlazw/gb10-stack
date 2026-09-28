@@ -49,8 +49,22 @@ Once complete, your AI workstation is immediately ready to use:
 3. **Ingest & Search Your Own Documents**:
    * In DGX Mission Control, click the **`📚 Knowledge & RAG Studio`** tab.
    * Drag-and-drop your company PDFs, Word documents, or spreadsheets into the dropzone.
-   * Click **`⚡ Ingest & Retrain RAG`** to automatically chunk, embed, and index them into your local vector database.
+   * Click **`⚡ Ingest & Retrain RAG`** to automatically chunk, embed, and index them into your local vector database via `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`.
    * Click **`🎯 Run Retrieval Accuracy Benchmark`** to audit retrieval accuracy and view live Q&A citations.
+
+---
+
+## Enterprise RAG & Embedding Architecture
+
+The retrieval pipeline operates 100% on-device with zero external cloud API dependencies or data leakage:
+
+* **Primary Embedding Model**: `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`
+  * **Vector Dimensions**: 384-dimensional dense floating-point embeddings.
+  * **Language Support**: 50+ languages natively aligned (English, Bahasa Malaysia, Chinese, Tamil, and regional dialects).
+  * **Execution**: In-process execution with fast GPU/CPU batch inference.
+* **Auxiliary Fallback Embedder**: `TaylorAI/bge-micro-v2` (ultra-fast compact embeddings).
+* **Vector Database**: Embedded Chroma vector store with persistent SQLite metadata.
+* **Chunking Strategy**: 512-token semantic windowing with 50-token sliding overlap.
 
 ---
 
@@ -100,7 +114,7 @@ The remaining **~46.1 GiB** buffer provides abundant margin for:
 | Module | Core Functionality | Service / Target |
 |---|---|---|
 | `modules/llm-serving.sh` | Solo Flagship 35B NVFP4 MoE via official SGLang container | `qwen38-35b.service` (`:30000`) |
-| `modules/rag.sh` | Open WebUI + Nginx trusted proxy + Chroma vector store | `open-webui` (`:80` -> `:8080`) |
+| `modules/rag.sh` | Open WebUI + Nginx proxy + Chroma vector store (`paraphrase-multilingual-MiniLM-L12-v2`) | `open-webui` (`:80` -> `:8080`) |
 | `modules/observability.sh` | ESM Prometheus, node-exporter, DCGM GPU telemetry, Grafana | `:9090`, `:9100`, `:9400`, `:3000` |
 | `modules/mission-control.sh` | Live dashboard, RAG Studio, and Desktop shortcut creation | `mission-control.service` (`:8765`) |
 | `scripts/gen-services.sh` | Dynamic service scanner generating live `mc.json` | Automatic |
