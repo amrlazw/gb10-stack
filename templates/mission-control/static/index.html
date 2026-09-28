@@ -204,6 +204,18 @@ body.remote:not(.unlocked) .svc .actions button, body.remote:not(.unlocked) #seq
 .rag-console .log-warn { color: var(--amber); }
 .rag-console .log-bad { color: var(--red); }
 .rag-console .log-info { color: var(--dim); }
+
+/* Status Pill */
+.status-pill { display: inline-flex; align-items: center; gap: 7px; padding: 4px 11px; border-radius: 999px;
+  border: 1px solid var(--line); background: rgba(148, 170, 200, .06); font: 600 11px var(--mono);
+  letter-spacing: 0.8px; text-transform: uppercase; color: var(--dim); white-space: nowrap; }
+.status-pill .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--faint); flex: none; }
+.status-pill.run { border-color: rgba(255,176,32,.4); color: var(--amber); background: rgba(255,176,32,.08); }
+.status-pill.run .dot { background: var(--amber); box-shadow: 0 0 6px var(--amber); animation: pulse 1.5s infinite; }
+.status-pill.ok { border-color: rgba(61,220,151,.3); color: var(--ok); background: rgba(61,220,151,.08); }
+.status-pill.ok .dot { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+.status-pill.bad { border-color: rgba(255,92,92,.4); color: var(--red); background: rgba(255,92,92,.08); }
+.status-pill.bad .dot { background: var(--red); box-shadow: 0 0 6px var(--red); }
 .eval-score-card { background: rgba(118, 185, 0, .08); border: 1px solid var(--green); border-radius: 14px; padding: 16px; margin-top: 12px; }
 .eval-big { font-family: var(--disp); font-size: 32px; font-weight: 700; color: var(--green); }
 .select-box, .text-input { width: 100%; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--line-strong);
@@ -310,7 +322,10 @@ body.remote:not(.unlocked) .svc .actions button, body.remote:not(.unlocked) #seq
       <section class="card">
         <div class="hdr">
           <h2>Document Ingestion &amp; Retraining</h2>
-          <span class="label" id="ragJobStatus">IDLE</span>
+          <span class="status-pill" id="ragJobPill">
+            <span class="dot" id="ragJobDot"></span>
+            <span id="ragJobStatus">IDLE</span>
+          </span>
         </div>
         <div style="margin-bottom:12px;">
           <label class="label" style="display:block;margin-bottom:6px;">Target Knowledge Collection</label>
@@ -323,9 +338,14 @@ body.remote:not(.unlocked) .svc .actions button, body.remote:not(.unlocked) #seq
           <p>Supports PDF, Markdown, DOCX, TXT, CSV (Auto-chunked &amp; vectorized via MiniLM-L12)</p>
         </div>
         <div class="file-queue" id="fileQueue"></div>
-        <div style="margin-top:14px;display:flex;gap:10px;justify-content:flex-end;">
+        <div style="margin-top:14px;display:flex;gap:10px;justify-content:flex-end;align-items:center;flex-wrap:wrap;">
           <button class="btn" id="btnClearQueue" onclick="clearFileQueue()" style="display:none;">Clear</button>
-          <button class="btn go" id="btnIngest" onclick="startIngest()" disabled style="padding:9px 18px;font-size:13px;">⚡ Ingest &amp; Retrain RAG</button>
+          <button class="btn" id="btnReindex" onclick="startReindex()" style="padding:9px 16px;font-size:13px;border-color:rgba(167,139,250,.4);color:var(--violet);background:rgba(167,139,250,.08);font-weight:600;">
+            🔄 Retrain Active Collection
+          </button>
+          <button class="btn go" id="btnIngest" onclick="startIngest()" disabled style="padding:9px 18px;font-size:13px;">
+            ⚡ Ingest &amp; Retrain RAG
+          </button>
         </div>
         <div style="margin-top:16px;">
           <div class="hdr"><span class="label">Ingestion &amp; Vector Log</span><span class="label" id="ragProgressText"></span></div>
@@ -364,6 +384,19 @@ body.remote:not(.unlocked) .svc .actions button, body.remote:not(.unlocked) #seq
             </div>
           </div>
           <div style="font-size:12px;color:var(--dim);margin-top:8px;" id="evalMeta"></div>
+          
+          <!-- Auto Retrain & Re-Test banner when accuracy < 80% -->
+          <div id="retrainAlert" style="display:none;margin-top:12px;background:rgba(255,176,32,.08);border:1px solid rgba(255,176,32,.3);border-radius:12px;padding:12px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+              <div>
+                <b style="color:var(--amber);font-size:13px;">Grounding Threshold Not Met (<span id="alertScore">0%</span> &lt; 80%)</b>
+                <p class="muted" style="font-size:12px;margin-top:2px;">Retrain document vector embeddings and re-run benchmark until verified.</p>
+              </div>
+              <button class="btn" id="btnAutoTune" onclick="startAutoTuneLoop()" style="padding:8px 14px;background:rgba(255,176,32,.2);border-color:var(--amber);color:var(--text);font-weight:600;font-size:12px;">
+                ⚡ Retrain &amp; Re-Test Until Pass
+              </button>
+            </div>
+          </div>
         </div>
 
         <div style="margin-top:16px;">
@@ -742,20 +775,35 @@ async function loadRagStatus() {
     }
     
     const st = res.state || {};
-    $("ragJobStatus").textContent = (st.status || "IDLE").toUpperCase();
+    const stName = (st.status || "IDLE").toUpperCase();
+    $("ragJobStatus").textContent = stName;
+    const pill = $("ragJobPill");
+    if (pill) {
+      if (st.status === "ingesting" || st.status === "evaluating" || st.status === "retraining") {
+        pill.className = "status-pill run";
+      } else {
+        pill.className = "status-pill";
+      }
+    }
+    
     if (st.status === "ingesting") {
-      $("ragJobStatus").className = "label dot ok pulse";
-      $("ragProgressText").textContent = `Indexing ${st.progress} / ${st.total}...`;
+      $("ragProgressText").textContent = st.current_file ? `Ingesting '${st.current_file}' (${st.progress}/${st.total})` : `Indexing ${st.progress} / ${st.total}...`;
       $("btnIngest").disabled = true;
+      if ($("btnReindex")) $("btnReindex").disabled = true;
+    } else if (st.status === "retraining") {
+      $("ragProgressText").textContent = st.current_file ? `Retraining '${st.current_file}' (${st.progress}/${st.total})` : `Retraining ${st.progress} / ${st.total}...`;
+      $("btnIngest").disabled = true;
+      if ($("btnReindex")) $("btnReindex").disabled = true;
     } else if (st.status === "evaluating") {
-      $("ragJobStatus").className = "label dot warn pulse";
       $("ragProgressText").textContent = `Testing query ${st.progress} / ${st.total}...`;
       $("btnRunEval").disabled = true;
+      if ($("btnAutoTune")) $("btnAutoTune").disabled = true;
     } else {
-      $("ragJobStatus").className = "label";
       $("ragProgressText").textContent = "";
       $("btnIngest").disabled = STAGED_FILES.length === 0;
+      if ($("btnReindex")) $("btnReindex").disabled = colls.length === 0;
       $("btnRunEval").disabled = colls.length === 0;
+      if ($("btnAutoTune")) $("btnAutoTune").disabled = false;
     }
     
     if (st.logs && st.logs.length > 0) {
@@ -774,6 +822,16 @@ async function loadRagStatus() {
       $("evalScorePct").style.color = ev.score_pct >= 80 ? "var(--green)" : "var(--amber)";
       $("evalDuration").textContent = ev.duration_s + "s";
       $("evalMeta").textContent = `${ev.passed}/${ev.total} queries passed on "${ev.collection}" (${ev.timestamp})`;
+      
+      const alertEl = $("retrainAlert");
+      if (alertEl) {
+        if (ev.score_pct < 80) {
+          alertEl.style.display = "block";
+          $("alertScore").textContent = ev.score_pct + "%";
+        } else {
+          alertEl.style.display = "none";
+        }
+      }
     }
   } catch (e) {
     console.error("RAG status error:", e);
@@ -917,6 +975,68 @@ async function startEval() {
   } catch (e) {
     toast("Network error starting evaluation", true);
     $("btnRunEval").disabled = false;
+  }
+}
+
+async function startReindex() {
+  const targetColl = $("ragTargetColl").value;
+  const targetName = $("ragTargetColl").selectedOptions[0]?.text || "Knowledge Base";
+  if (!targetColl) { toast("Please select a target collection", true); return; }
+  
+  toast(`Retraining collection: ${targetName}...`);
+  if ($("btnReindex")) $("btnReindex").disabled = true;
+  $("ragConsole").innerHTML = `<div class="log-info">[retrain] Re-indexing and re-embedding all documents in '${targetName}'...</div>`;
+  
+  try {
+    const res = await fetch("/api/rag/reindex", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        collection_id: targetColl,
+        collection_name: targetName
+      })
+    }).then(r => r.json());
+    
+    if (res.ok) {
+      loadRagStatus();
+    } else {
+      toast(res.msg || "Failed to start retraining", true);
+      if ($("btnReindex")) $("btnReindex").disabled = false;
+    }
+  } catch (e) {
+    toast("Network error starting retraining", true);
+    if ($("btnReindex")) $("btnReindex").disabled = false;
+  }
+}
+
+async function startAutoTuneLoop() {
+  const evalColl = $("ragEvalColl").value;
+  const evalName = $("ragEvalColl").selectedOptions[0]?.text || "Knowledge Base";
+  if (!evalColl) { toast("Please select a collection to retrain & test", true); return; }
+  
+  toast(`Starting Auto-Retrain & Re-Test loop for ${evalName}...`);
+  if ($("btnAutoTune")) $("btnAutoTune").disabled = true;
+  $("evalConsole").innerHTML = `<div class="log-info">[auto-tune] Re-vectorizing documents and running verification passes until >=80% grounded...</div>`;
+  
+  try {
+    const res = await fetch("/api/rag/autotune", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        collection_id: evalColl,
+        collection_name: evalName
+      })
+    }).then(r => r.json());
+    
+    if (res.ok) {
+      loadRagStatus();
+    } else {
+      toast(res.msg || "Auto-retrain failed to start", true);
+      if ($("btnAutoTune")) $("btnAutoTune").disabled = false;
+    }
+  } catch (e) {
+    toast("Network error starting auto-retrain", true);
+    if ($("btnAutoTune")) $("btnAutoTune").disabled = false;
   }
 }
 
