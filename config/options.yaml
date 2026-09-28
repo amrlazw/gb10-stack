@@ -25,5 +25,5 @@ options:
 # ── global tunables (shared by all options; env at install time overrides) ──
 tunables:
   # Disk preflight budget: GB free required on the target filesystem.
-  # option-1 full non-vision ≈ 135 GB. flash lane adds ~225 (GB_FLASH=1).
-  min_free_gb: 135
+  # option-1 full non-vision (35B flagship solo) ≈ 75 GB. flash lane adds ~225 (GB_FLASH=1).
+  min_free_gb: 75
