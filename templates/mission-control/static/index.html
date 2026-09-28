@@ -289,7 +289,7 @@ body.remote:not(.unlocked) .svc .actions button, body.remote:not(.unlocked) #seq
   </section>
   </div>
 
-  <div id="viewRag" style="display:none; display:grid; gap:16px;">
+  <div id="viewRag" style="display:none; gap:16px;">
     <!-- Collections Overview Card -->
     <section class="card">
       <div class="hdr">
@@ -673,7 +673,10 @@ if (window.__BOOT) {  // server-embedded snapshot: paint real numbers before the
     const h = await fetch("/api/history").then((r) => r.json());
     ["gpu", "power", "temp", "mem", "cpu", "tok"].forEach((k) => (H[k] = (h[k] || []).slice(-MAXH)));
   } catch (e) {}
-  /* ---------- RAG Studio JS */
+  tick(); setInterval(tick, 1000);
+})();
+
+/* ---------- RAG Studio JS */
 let CURRENT_TAB = 'telemetry';
 let STAGED_FILES = [];
 let RAG_POLL_INTERVAL = null;
@@ -950,9 +953,6 @@ async function submitNewCollection() {
     toast("Error creating collection", true);
   }
 }
-
-tick(); setInterval(tick, 1000);
-})();
 </script>
 </body>
 </html>
