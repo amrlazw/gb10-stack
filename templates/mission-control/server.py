@@ -34,12 +34,12 @@ def _load_services():
         except Exception:
             pass
     return [
-        {"id": "llm27b", "cat": "model", "name": "Qwen3.8-27B", "engine": "SGLang + DFlash2", "port": 30000, "kind": "llm",
-         "container": "qwen38-sglang-run", "need_gb": 62},
-        {"id": "llm35b", "cat": "model", "name": "Qwen3.6-35B-A3B", "engine": "SGLang · NVFP4 MoE", "port": 30002, "kind": "sys",
-         "unit": "qwen38-35b.service", "need_gb": 60},   # need_gb = the container's docker memory cap
+        {"id": "llm35b", "cat": "model", "name": "Qwen3.6-35B-A3B", "engine": "SGLang · NVFP4 MoE", "port": 30000, "kind": "sys",
+         "unit": "qwen38-35b.service", "need_gb": 70},
         {"id": "webui", "cat": "app", "name": "Open WebUI", "engine": "chat · qwen3.6-35b", "port": 80, "kind": "docker",
-         "containers": ["open-webui", "open-webui-proxy"], "need_gb": 2, "url": "http://localhost/"},   # remote_url comes from generated mc.json
+         "containers": ["open-webui", "open-webui-proxy"], "need_gb": 2, "url": "http://localhost/"},
+        {"id": "sunshine", "cat": "system", "name": "Sunshine", "engine": "remote desktop stream", "port": 47990, "kind": "user",
+         "unit": "sunshine.service", "url": "https://localhost:47990"},
     ], ""
 SERVICES, _TAILNET_ORIGIN_CFG = _load_services()
 SVC = {s["id"]: s for s in SERVICES}
@@ -308,14 +308,9 @@ def action(sid, op):
     return True, f"{s['name']} ({s['engine']}): starting, first boot takes a few minutes"
 
 # ---------------------------------------------------------------- booth start-up sequence
-# Order matters: the 35B's unit waits for the 27B on :30000 before it launches, and each step
-# must clear its memory guard. Steps already running are skipped. Timeouts cover a cold start.
-# Non-vision booth sequence: the 27B lane is systemd-managed (qwen38-sglang.service)
-# and is expected already up; the 35B's own ExecStartPre gates on it. The sequence
-# therefore starts the 35B (its unit waits for :30000 health) and the webui.
-# Cost for llm35b is the ADDITIONAL GB on top of the already-running 27B.
-# Timeouts cover a cold start.
-BOOT_SEQ = [("llm35b", 600, 42), ("webui", 120, 2)]
+# Flagship 35B non-vision sequence: starts 35B (systemd unit, ~70 GB reserved memory)
+# and Open WebUI. Timeouts cover a cold start.
+BOOT_SEQ = [("llm35b", 600, 70), ("webui", 120, 2)]
 MIN_HEADROOM = 15   # GB; below this a busy booth (35B batching, desktop, browser) can freeze the box
 SEQ = {"running": False, "step": -1, "state": [], "msg": ""}
 

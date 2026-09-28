@@ -1,11 +1,12 @@
 # gb10-stack
 
 Turnkey, modular installer for NVIDIA GB10 (DGX Spark) — option 1 of a
-family. One command rebuilds the full non-vision stack: LLM serving
-(27B + 35B dual-live), RAG (Open WebUI + config-driven rag-prep tools),
-observability (Prometheus/node-exporter/DCGM/Loki/Grafana, ESM-gated),
-DGX Mission Control (generated, not hardcoded), and remote access
-(Tailscale funnels + Sunshine).
+family. One command rebuilds the full non-vision stack: Flagship 35B NVFP4 MoE
+serving (SGLang official, solo 70 GB pool, zero OOM contention), RAG (Open WebUI
++ config-driven rag-prep tools), observability (Prometheus/node-exporter/DCGM/Loki/Grafana,
+ESM-gated), DGX Mission Control (generated, not hardcoded), and remote access
+(Tailscale funnels + Sunshine). Vision models (FLUX, Ollama, FaceSwap, Arcade)
+are intentionally excluded by design.
 
 ## Install
 

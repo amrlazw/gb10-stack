@@ -1,80 +1,80 @@
 #!/usr/bin/env bash
-# Module 10 — LLM serving.
-#  27B lane: DELEGATED to upstream dgx-spark-qwen38 (MIT) via its get.sh one-liner.
-#            Upstream owns image, engine, keepalive proxy (:30001), Spark Cockpit (:30090).
-#  35B lane: second SGLang unit, dual-live with P1 ordering (boots only after 27B healthy).
-#            Shares the 27B API key file (~/.config/qwen38/api-key).
-#  Flash 176B lane: opt-in only (GB_FLASH=1), +225 GB — never default.
-#
-# Env: GB_FLASH=1 to add the 176B lane. Ports tunable via PORT / PROXY_PORT (27B).
+# Module 10 — LLM serving (Flagship 35B NVFP4 MoE Solo Architecture).
+#  Model: nvidia/Qwen3.6-35B-A3B-NVFP4 (MoE architecture, ~22.2 GB weights).
+#  Engine: SGLang official release (lmsysorg/sglang), host networking.
+#  Memory profile: --memory 70g, --mem-fraction-static 0.60.
+#    Leaves ~50 GB guaranteed unified headroom for Ubuntu, Open WebUI, and desktop.
+#    Zero OOM contention (27B and vision models left completely out of baseline).
+#  Port: 127.0.0.1:30000 (standard OpenAI/Anthropic API entrypoint).
 
-MIN_FREE_GB=110   # 27B image 38.6 GB + HF cache ~28 GB + 35B weights + headroom
+MIN_FREE_GB=75   # 35B weights (~23 GB) + SGLang image + cache + headroom
 
 mod_install() {
   local user="$GB_USER"
   local home_dir="$HOME"
   local qwen_cfg="$HOME/.config/qwen38"
-
-  # ── 27B lane: delegate to upstream (idempotent — get.sh reuses the clone) ──
-  if [ -f "$qwen_cfg/api-key" ] && systemctl list-unit-files 2>/dev/null | grep -q "^qwen38-sglang.service"; then
-    ok "27B lane already installed (qwen38-sglang.service present) — skipping upstream"
-  else
-    info "27B lane: delegating to upstream dgx-spark-qwen38 (one-liner, MIT)"
-    if [ "$GBPLAN" = "1" ]; then
-      plan "curl -fsSL https://raw.githubusercontent.com/hasso5703/dgx-spark-qwen38/main/get.sh | bash -s --  (PORT=30000 PROXY_PORT=30001)"
-    else
-      # Upstream refuses sudo in front itself; we are a normal user here.
-      curl -fsSL "https://raw.githubusercontent.com/hasso5703/dgx-spark-qwen38/main/get.sh" \
-        | env PORT=30000 PROXY_PORT=30001 bash -s --
-      ok "27B lane delegated to upstream (engine :30000, keepalive :30001, cockpit :30090)"
-    fi
-  fi
-
-  # ── 35B lane: second unit, dual-live with health-ordered boot ────────────
-  local port_35b="${PORT_35B:-30002}"
+  local port_35b="${PORT:-30000}"
   local launch35="$qwen_cfg/launch-35b.sh"
   local unit35="/etc/systemd/system/qwen38-35b.service"
   local image35="lmsysorg/sglang@sha256:febfb971c7352570fc445c466ebd6ffc9d896024958e544a60f2137fd85856b1"
   local model35="nvidia/Qwen3.6-35B-A3B-NVFP4"
   local rev35="1355db6a052410cfd62085d94b58866fd0f2c3c5"
 
-  # The 35B lane reads the SAME api-key the 27B lane generated. If upstream
-  # hasn't created it yet (plan mode / fresh), we still template the path.
+  info "35B lane: setting up Qwen3.6-35B-A3B NVFP4 on SGLang (port $port_35b)"
+
+  # ── Configuration & Security ───────────────────────────────────────────
+  if [ "$GBPLAN" = "1" ]; then
+    plan "ensure dir: $qwen_cfg (mode 700)"
+    plan "generate API key if missing -> $qwen_cfg/api-key (mode 600)"
+  else
+    mkdir -p "$qwen_cfg" && chmod 700 "$qwen_cfg"
+    if [ ! -s "$qwen_cfg/api-key" ]; then
+      python3 -c "import secrets; print(secrets.token_urlsafe(24))" > "$qwen_cfg/api-key"
+      chmod 600 "$qwen_cfg/api-key"
+      ok "generated API key -> $qwen_cfg/api-key"
+    else
+      ok "existing API key kept -> $qwen_cfg/api-key"
+    fi
+    mkdir -p "$qwen_cfg/sglang-cache"
+  fi
+
+  # ── Render 35B launch script ───────────────────────────────────────────
+  # Solo GB10 tuning: --mem-fraction-static 0.60 gives ~50 GB dedicated KV pool
+  # while keeping ~50 GB completely unreserved for OS, Open WebUI, and RAG.
   write_file "$launch35" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
-exec /usr/bin/docker run --rm --name qwen38-35b --gpus all \
-  --memory 60g --memory-swap 60g --shm-size 16g --network host --ipc=host \
-  -e TORCHINDUCTOR_CACHE_DIR=/cache/inductor \
-  -e HF_HUB_OFFLINE=1 \
-  -v $home_dir/.config/qwen38/sglang-cache:/cache \
-  -v $home_dir/.cache/huggingface:/root/.cache/huggingface \
-  -v $home_dir/.config/qwen38:/out \
-  $image35 \
-  python3 -m sglang.launch_server \
-    --trust-remote-code --model-path $model35 --revision $rev35 --tp-size 1 \
-    --served-model-name qwen3.6-35b \
-    --mem-fraction-static 0.45 \
-    --attention-backend flashinfer --chunked-prefill-size 8192 \
-    --disable-prefill-cuda-graph --cuda-graph-max-bs 8 \
-    --disable-flashinfer-autotune \
-    --moe-runner-backend flashinfer_cutlass \
-    --max-running-requests 8 \
-    --reasoning-parser qwen3 --tool-call-parser qwen3_coder \
-    --api-key "\$(cat $home_dir/.config/qwen38/api-key)" \
+exec /usr/bin/docker run --rm --name qwen38-35b --gpus all \\
+  --memory 70g --memory-swap 70g --shm-size 16g --network host --ipc=host \\
+  -e TORCHINDUCTOR_CACHE_DIR=/cache/inductor \\
+  -e HF_HUB_OFFLINE=1 \\
+  -v $home_dir/.config/qwen38/sglang-cache:/cache \\
+  -v $home_dir/.cache/huggingface:/root/.cache/huggingface \\
+  -v $home_dir/.config/qwen38:/out \\
+  $image35 \\
+  python3 -m sglang.launch_server \\
+    --trust-remote-code --model-path $model35 --revision $rev35 --tp-size 1 \\
+    --served-model-name qwen3.6-35b \\
+    --mem-fraction-static 0.60 \\
+    --attention-backend flashinfer --chunked-prefill-size 8192 \\
+    --disable-prefill-cuda-graph --cuda-graph-max-bs 8 \\
+    --disable-flashinfer-autotune \\
+    --moe-runner-backend flashinfer_cutlass \\
+    --max-running-requests 8 \\
+    --reasoning-parser qwen3 --tool-call-parser qwen3_coder \\
+    --api-key "\$(cat $home_dir/.config/qwen38/api-key)" \\
     --host 0.0.0.0 --port $port_35b
 EOF
 
-  # 35B unit — P1 ordering: wait up to 6 min for the 27B lane (:30000) health.
-  local port_27b="${PORT:-30000}"
+  if [ "$GBPLAN" != "1" ]; then
+    chmod 755 "$launch35"
+  fi
+
+  # ── Render systemd unit (autonomous start, zero dependencies on 27B) ───
   write_root "$unit35" <<EOF
 [Unit]
-Description=Qwen3.6-35B-A3B NVFP4 (SGLang, capped docker), OpenAI API :$port_35b
-# P1 dual-live ordering: boot only after the 27B lane is up AND healthy
-# (SGLang sizes pools off free-at-boot memory; starting together would
-# over-reserve and fail the min-viable check). ExecStartPre waits up to
-# 6 min for :$port_27b health.
-After=network-online.target docker.service qwen38-sglang.service
+Description=Qwen3.6-35B-A3B NVFP4 (SGLang, solo 70g cap), OpenAI API :$port_35b
+After=network-online.target docker.service
 Wants=network-online.target
 Requires=docker.service
 
@@ -82,49 +82,23 @@ Requires=docker.service
 Type=simple
 User=$user
 Group=$user
-ExecStartPre=/bin/bash -c 'for i in \$(seq 1 72); do curl -s -m 2 http://127.0.0.1:$port_27b/health >/dev/null 2>&1 && exit 0; sleep 5; done; exit 1'
-ExecStart=/bin/bash $home_dir/.config/qwen38/launch-35b.sh
+ExecStartPre=-/usr/bin/docker rm -f qwen38-35b
+ExecStart=/bin/bash $launch35
 ExecStop=-/usr/bin/docker stop -t 20 qwen38-35b
 Restart=always
-# docker kills SGLang with SIGKILL (137) or SIGTERM (143) on a plain stop;
-# that is a clean stop, not a failure (same convention as qwen38-sglang.service)
 SuccessExitStatus=137 143
-RestartSec=15
+RestartSec=10
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-  if [ "$GBPLAN" != "1" ]; then
-    chmod +x "$launch35"
+  if [ "$GBPLAN" = "1" ]; then
+    plan "systemctl daemon-reload && systemctl enable --now qwen38-35b.service"
+  else
     run_root "systemctl daemon-reload"
     run_root "systemctl enable qwen38-35b.service"
-    # Don't start here if the 27B lane isn't up yet; the unit's ordering
-    # handles boot. Start now only if 27B is already healthy.
-    if curl -s -m 2 "http://127.0.0.1:$port_27b/health" >/dev/null 2>&1; then
-      run_root "systemctl start qwen38-35b.service"
-      ok "35B lane started (dual-live with 27B)"
-    else
-      info "35B lane enabled; will start at boot after 27B is healthy (or run: sudo systemctl start qwen38-35b.service)"
-    fi
-  fi
-  ok "35B lane: unit $unit35, launch $launch35 (port $port_35b)"
-
-  # ── Flash 176B lane (opt-in) ────────────────────────────────────────────
-  # Reality (reference box): qwen38-flash.service is a SWITCHABLE lane on the
-  # same :30000 — upstream's switch-model.sh toggles which of 27B/flash is
-  # active; they are NOT simultaneously live. The 35B on :30002 keeps running
-  # in either case. Upstream owns image, PLE table, tiers (FLASH_TIER).
-  if [ "${GB_FLASH:-0}" = "1" ]; then
-    info "Flash 176B lane (opt-in): installing upstream flash lane on :30000 (+225 GB)"
-    if [ "$GBPLAN" = "1" ]; then
-      plan "curl -fsSL .../get.sh | env MODEL_CHOICE=flash bash -s --  (upstream flash lane, switchable with 27B via switch-model.sh)"
-    else
-      curl -fsSL "https://raw.githubusercontent.com/hasso5703/dgx-spark-qwen38/main/get.sh" \
-        | env MODEL_CHOICE=flash bash -s --
-      ok "flash lane installed — toggle with: cd ~/dgx-spark-qwen38 && ./switch-model.sh flash | stock"
-    fi
-  else
-    info "Flash 176B lane: skipped (set GB_FLASH=1 to enable; +225 GB, switchable with 27B on :30000)"
+    run_root "systemctl restart qwen38-35b.service"
+    ok "35B systemd service active on port $port_35b (standalone, zero OOM risk)"
   fi
 }

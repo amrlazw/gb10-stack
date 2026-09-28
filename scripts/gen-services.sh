@@ -7,8 +7,8 @@ set -euo pipefail
 
 MC_HOME="${MC_HOME:-$HOME/mission-control}"
 OUT="$MC_HOME/mc.json"
-PORT_27B="${PORT:-30000}"
-PORT_35B="${PORT_35B:-30002}"
+PORT_27B="${PORT_27B:-30000}"
+PORT_35B="${PORT:-30000}"
 
 # tailscale MagicDNS name (e.g. box.tailabcd12.ts.net) — empty when not on tailnet
 TS_DOMAIN=""

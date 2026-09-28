@@ -34,12 +34,8 @@ echo "────────────────────────�
 check "docker daemon up" docker info
 check "nvidia driver present" nvidia-smi
 
-# ── L1: LLM serving ─────────────────────────────────────────────────────
-check "27B engine healthy (:30000 /health)" curl -sf -m 3 http://127.0.0.1:30000/health
-check "keepalive proxy up (:30001)" port_open 30001
-check "35B engine healthy (:30002 /health)" curl -sf -m 3 http://127.0.0.1:30002/health
-check "spark cockpit up (:30090)" port_open 30090
-check "27B unit active (qwen38-sglang.service)" unit_active qwen38-sglang.service
+# ── L1: LLM serving (Flagship 35B NVFP4 MoE) ───────────────────────────
+check "35B engine healthy (:30000 /health)" curl -sf -m 3 http://127.0.0.1:30000/health
 check "35B unit active (qwen38-35b.service)" unit_active qwen38-35b.service
 check "api-key file present (~/.config/qwen38/api-key)" test -r "$HOME/.config/qwen38/api-key"
 
