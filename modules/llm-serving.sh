@@ -38,16 +38,34 @@ mod_install() {
     mkdir -p "$qwen_cfg/sglang-cache"
   fi
 
+  # ── Container Image Pre-pull ───────────────────────────────────────────
+  if [ "$GBPLAN" = "1" ]; then
+    plan "docker pull $image35"
+  else
+    if ! docker image inspect "$image35" >/dev/null 2>&1; then
+      info "Pulling official SGLang container image (may take 2-4 minutes)..."
+      docker pull "$image35"
+      ok "SGLang container image pulled"
+    fi
+  fi
+
   # ── Render 35B launch script ───────────────────────────────────────────
   # Solo GB10 tuning: --mem-fraction-static 0.60 gives ~50 GB dedicated KV pool
   # while keeping ~50 GB completely unreserved for OS, Open WebUI, and RAG.
   write_file "$launch35" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
+
+# Enable offline mode only if model weights are already cached locally
+HF_OFFLINE=""
+if [ -d "$home_dir/.cache/huggingface/hub/models--nvidia--Qwen3.6-35B-A3B-NVFP4/snapshots" ]; then
+  HF_OFFLINE="-e HF_HUB_OFFLINE=1"
+fi
+
 exec /usr/bin/docker run --rm --name qwen38-35b --gpus all \\
   --memory 70g --memory-swap 70g --shm-size 16g --network host --ipc=host \\
   -e TORCHINDUCTOR_CACHE_DIR=/cache/inductor \\
-  -e HF_HUB_OFFLINE=1 \\
+  \$HF_OFFLINE \\
   -v $home_dir/.config/qwen38/sglang-cache:/cache \\
   -v $home_dir/.cache/huggingface:/root/.cache/huggingface \\
   -v $home_dir/.config/qwen38:/out \\
@@ -82,6 +100,8 @@ Requires=docker.service
 Type=simple
 User=$user
 Group=$user
+TimeoutStartSec=1800
+TimeoutStopSec=60
 ExecStartPre=-/usr/bin/docker rm -f qwen38-35b
 ExecStart=/bin/bash $launch35
 ExecStop=-/usr/bin/docker stop -t 20 qwen38-35b

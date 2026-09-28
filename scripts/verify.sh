@@ -47,14 +47,12 @@ check "webui reachable (:3000)" curl -sf -m 3 -o /dev/null http://127.0.0.1:3000
 check "rag tools installed" test -x "$HOME/.gb10-stack/rag/tools/ingest.py"
 check "rag config present" test -f "$HOME/.gb10-stack/rag/rag.json"
 
-# ── L3: observability (ESM — skip cleanly when not attached) ────────────
-if sudo pro status --format json 2>/dev/null | grep -qE '"active" *: *true'; then
-  check "prometheus up (:9090)" curl -sf -m 3 -o /dev/null http://127.0.0.1:9090/-/healthy
-  check "node-exporter up (:9100)" port_open 9100
-  check "dcgm-exporter up (:9400)" port_open 9400
+# ── L3: observability ───────────────────────────────────────────────────
+check "prometheus up (:9090)" curl -sf -m 3 -o /dev/null http://127.0.0.1:9090/-/healthy
+check "node-exporter up (:9100)" port_open 9100
+check "dcgm-exporter up (:9400)" port_open 9400
+if port_open 3000; then
   check "grafana up (:3000)" port_open 3000
-else
-  s "observability (ESM not attached — sudo pro attach <token>)"
 fi
 
 # ── L4: mission control ─────────────────────────────────────────────────

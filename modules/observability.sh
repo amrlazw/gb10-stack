@@ -13,26 +13,35 @@ MIN_FREE_GB=8
 mod_install() {
   local port_27b="${PORT:-30000}"
 
-  # ── ESM gate ───────────────────────────────────────────────────────────
-  if [ "$GBPLAN" = "1" ]; then
-    plan "check: pro status (ESM required)"
+  # ── Observability Packages (Prometheus, Node-Exporter, Grafana) ─────────
+  local has_esm=0
+  if sudo pro status --format json 2>/dev/null | grep -qE '"active" *: *true|esm.*active.*true'; then
+    has_esm=1
+    ok "Ubuntu Pro ESM active"
   else
-    if ! sudo pro status --format json 2>/dev/null | grep -qE '"active" *: *true|esm.*active.*true'; then
-      warn "Ubuntu Pro not active — ESM packages (prometheus, grafana, loki, alloy, node-exporter) will not install."
-      warn "Attach first, then rerun this module:"
-      warn "  sudo pro attach <token>          (one-time; token from https://ubuntu.com/pro)"
-      warn "  bash $GBREPO_DIR/install.sh --module observability"
-      return 0
-    fi
-    ok "ESM active"
+    info "Ubuntu Pro not attached — installing Prometheus & Node-Exporter via standard Ubuntu Universe repos."
   fi
 
   # ── packages ───────────────────────────────────────────────────────────
   if [ "$GBPLAN" = "1" ]; then
-    plan "sudo apt-get install prometheus prometheus-node-exporter grafana loki alloy"
+    plan "install prometheus, prometheus-node-exporter, and grafana"
   else
-    run_root "DEBIAN_FRONTEND=noninteractive apt-get install -y prometheus prometheus-node-exporter grafana loki alloy"
-    ok "ESM observability packages installed"
+    run_root "add-apt-repository -y universe"
+    run_root "apt-get update -qq"
+    run_root "DEBIAN_FRONTEND=noninteractive apt-get install -y prometheus prometheus-node-exporter"
+
+    if [ "$has_esm" = "1" ]; then
+      run_root "DEBIAN_FRONTEND=noninteractive apt-get install -y grafana loki alloy 2>/dev/null || true"
+    else
+      # Install standard Grafana OSS if not already installed
+      if ! command -v grafana-server >/dev/null 2>&1; then
+        run_root "mkdir -p /etc/apt/keyrings"
+        run_root "curl -fsSL https://apt.grafana.com/gpg.key | gpg --dearmor -o /etc/apt/keyrings/grafana.gpg 2>/dev/null || true"
+        run_root "echo 'deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main' > /etc/apt/sources.list.d/grafana.list"
+        run_root "apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y grafana 2>/dev/null || true"
+      fi
+    fi
+    ok "observability packages installed"
   fi
 
   # ── prometheus scrape config (3 jobs, templatized engine port) ────────

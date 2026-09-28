@@ -29,7 +29,10 @@ if [ "$(id -u)" = "0" ]; then
   fi
 fi
 
-command -v git >/dev/null || { echo "ERROR: git is required (stock on DGX OS)." >&2; exit 1; }
+if ! command -v git >/dev/null 2>&1; then
+  echo "── git not found — installing git..."
+  sudo apt-get update -qq && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y git
+fi
 
 # Case 1: already inside a clone of this repo -> use it.
 DIR="${DIR:-}"
