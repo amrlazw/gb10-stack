@@ -52,6 +52,16 @@ Once complete, your AI workstation is immediately ready to use:
    * Click **`⚡ Ingest & Retrain RAG`** to automatically chunk, embed, and index them into your local vector database via `BAAI/bge-m3`.
    * Click **`🎯 Run Retrieval Accuracy Benchmark`** to audit retrieval accuracy and view live Q&A citations.
 
+4. **Run the Health Check (any time, takes ~10 seconds)**:
+   * The install command you pasted already saved the tools for you in a folder called `gb10-stack` — no extra download or "clone" needed.
+   * Open a terminal (click the **Activities** menu, type `terminal`, press Enter) and run:
+     ```bash
+     bash ~/gb10-stack/scripts/verify.sh
+     ```
+   * You will see a list of 24 checks (AI engine, RAG, metrics, dashboard, SSH, disk).
+   * Everything **PASS** = the box is healthy. Any **FAIL** = note the line; it tells you exactly what to re-check.
+   * Prefer remote? `ssh youruser@<box-ip>` from your laptop, then the same command.
+
 ---
 
 ## Enterprise RAG & Hybrid Retrieval Architecture
