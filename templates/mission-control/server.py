@@ -835,5 +835,56 @@ class Handler(SimpleHTTPRequestHandler):
         return self.send_json({"ok": ok, "msg": msg})
 
 if __name__ == "__main__":
+    # ---- desktop shortcut self-heal -------------------------------------
+    # GNOME 46 (Ubuntu 24.04) renders desktop icons through the DING
+    # extension, which only shows a .desktop icon as clean + launchable
+    # when the GVfs attribute metadata::trusted == true. That attribute is
+    # persisted by gvfsd-metadata, which requires an ACTIVE user session -
+    # and a fresh-box install runs over SSH, before first GUI login, so
+    # the installer's `gio set ... metadata::trusted true` silently no-ops
+    # and the shortcut never appears on the client's desktop.
+    #
+    # This server runs inside the user's active session (systemd --user,
+    # WantedBy=default.target), where `gio set` works. So on every start -
+    # plus a 5-minute healer thread until it sticks - we guarantee the
+    # shortcut exists, is executable, and is trusted. DING re-renders on
+    # the gvfs AttributeChanged signal, so the icon becomes clean as soon
+    # as the dashboard boots.
+    def _ensure_shortcut_trusted():
+        import subprocess as sp
+        f = os.path.join(HOME, "Desktop", "DGX-Mission-Control.desktop")
+        try:
+            os.makedirs(os.path.dirname(f), exist_ok=True)
+            if not os.path.exists(f):
+                with open(f, "w") as fh:
+                    fh.write(
+                        "[Desktop Entry]\nVersion=1.0\nType=Application\n"
+                        "Terminal=false\nExec=xdg-open http://127.0.0.1:8765\n"
+                        "Name=DGX Mission Control\n"
+                        "Comment=NVIDIA GB10 Mission Control Dashboard & RAG Studio\n"
+                        "Icon=utilities-system-monitor\nCategories=System;Utility;Development;\n"
+                    )
+            os.chmod(f, 0o755)
+            r = sp.run(["gio", "set", f, "metadata::trusted", "true"],
+                       capture_output=True, timeout=10)
+            if r.returncode != 0:
+                return False      # session not ready yet - healer retries
+            return sp.run(["gio", "info", "-a", "metadata::trusted", f],
+                          capture_output=True, timeout=10, text=True) \
+                       .stdout.find("true") >= 0
+        except Exception:
+            return False
+
+    def _shortcut_healer():
+        ok = _ensure_shortcut_trusted()
+        while not ok:             # retry until the session can accept the write
+            time.sleep(300)
+            ok = _ensure_shortcut_trusted()
+        time.sleep(300)           # keep a slow re-assert alive (idempotent)
+        while True:
+            time.sleep(300)
+            _ensure_shortcut_trusted()
+
+    threading.Thread(target=_shortcut_healer, daemon=True).start()
     threading.Thread(target=S.run, daemon=True).start()
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()   # box + LAN (hp-zgx.local:8765); Tailscale Serve proxies :8443 here

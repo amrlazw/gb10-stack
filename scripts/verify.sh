@@ -63,6 +63,9 @@ check "mission control up (:8765)" port_open 8765
 check "mc.json generated" test -f "$HOME/mission-control/mc.json"
 check "mc.json has no vision entries" bash -c "! grep -qE 'arcade|vlm|faceswap|moondream' $HOME/mission-control/mc.json"
 check "desktop shortcut present" test -f "$HOME/Desktop/DGX-Mission-Control.desktop"
+# GNOME 46 / DING only renders the icon clean+launchable when the GVfs
+# metadata::trusted flag is true; server.py self-heals this at session boot.
+check "desktop shortcut trusted (DING-visible)" bash -c "export XDG_RUNTIME_DIR=/run/user/\$(id -u); gio info -a metadata::trusted \"$HOME/Desktop/DGX-Mission-Control.desktop\" 2>/dev/null | grep -q 'true'"
 
 # ── L5: integrity ───────────────────────────────────────────────────────
 check "no leftover .gbstack.bak in /etc (or inspect them)" bash -c "! ls /etc/*.gbstack.bak 2>/dev/null | grep -q ."

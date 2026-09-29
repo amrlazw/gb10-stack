@@ -123,6 +123,9 @@ Icon=utilities-system-monitor
 Categories=System;Utility;Development;
 EOF
 chmod +x "$DESKTOP_FILE"
+# NOTE: persisting DING's `metadata::trusted` flag needs a live user session;
+# on a fresh box run over SSH this can no-op. No problem: server.py
+# self-heals the shortcut + flag on first session boot (5-min retry loop).
 command -v gio >/dev/null 2>&1 && gio set "$DESKTOP_FILE" metadata::trusted true 2>/dev/null || true
 
 # ── 7. health check ──────────────────────────────────────────────────────

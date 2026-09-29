@@ -253,6 +253,6 @@ else
   printf "     Drag and drop any PDF/DOCX to retrain your vector knowledge base.\n\n"
   printf "  \033[1;36m4. Health Check (optional, any time)\033[0m\n"
   printf "     \033[1;33mbash ~/gb10-stack/scripts/verify.sh\033[0m\n"
-  printf "     Runs the 24-point system verification ledger.\n"
+  printf "     Runs the 25-point system verification ledger.\n"
   printf "\033[1;32m══════════════════════════════════════════════════════════════════════\033[0m\n"
 fi

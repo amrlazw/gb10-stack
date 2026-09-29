@@ -95,6 +95,11 @@ Icon=utilities-system-monitor
 Categories=System;Utility;Development;
 EOF
     chmod +x "$desktop_file"
+    # NOTE: the DING `metadata::trusted` flag can only be PERSISTED inside a
+    # live user session. A fresh-box install typically runs over SSH (no
+    # session yet), so this may no-op here - that is fine: server.py
+    # self-heals the flag on first session boot (see _ensure_shortcut_trusted
+    # in server.py). verify.sh L4 asserts the flag.
     if command -v gio >/dev/null 2>&1; then
       gio set "$desktop_file" metadata::trusted true 2>/dev/null || true
     fi

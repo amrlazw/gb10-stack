@@ -58,7 +58,7 @@ Once complete, your AI workstation is immediately ready to use:
      ```bash
      bash ~/gb10-stack/scripts/verify.sh
      ```
-   * You will see a list of 24 checks (AI engine, RAG, metrics, dashboard, SSH, disk).
+   * You will see a list of 25 checks (AI engine, RAG, metrics, dashboard, desktop icon, SSH, disk).
    * Everything **PASS** = the box is healthy. Any **FAIL** = note the line; it tells you exactly what to re-check.
    * Prefer remote? `ssh youruser@<box-ip>` from your laptop, then the same command.
 
@@ -87,7 +87,7 @@ bash install.sh --plan          # zero-write dry run (audits hardware & disk wit
 bash install.sh                 # interactive turnkey deployment
 bash install.sh --force         # idempotent rerun / recovery
 bash install.sh --module rag    # targeted repair of an isolated module
-bash scripts/verify.sh          # 24-point post-install verification ledger
+bash scripts/verify.sh          # 25-point post-install verification ledger
 bash scripts/uninstall.sh --plan  # dry-run the full teardown (see "Uninstall" below)
 ```
 
@@ -99,7 +99,7 @@ stalls:
 
 ```bash
 ssh <user>@<box-ip>             # from your laptop (port 22)
-bash ~/gb10-stack/scripts/verify.sh   # full 24-point "did anything break" ledger
+bash ~/gb10-stack/scripts/verify.sh   # full 25-point "did anything break" ledger
 journalctl -u qwen38-35b.service -f   # tail the model engine's boot log live
 ```
 
@@ -208,7 +208,7 @@ The remaining **~45.6 GiB** buffer provides abundant margin for:
 | `modules/observability.sh` | ESM Prometheus, node-exporter, DCGM GPU telemetry, Grafana | `:9090`, `:9100`, `:9400`, `:3000` |
 | `modules/mission-control.sh` | Live dashboard, RAG Studio, and Desktop shortcut creation | `mission-control.service` (`:8765`) |
 | `scripts/gen-services.sh` | Dynamic service scanner generating live `mc.json` | Automatic |
-| `scripts/verify.sh` | 24-point non-destructive verification ledger (incl. SSH reachability) | Pre/post check |
+| `scripts/verify.sh` | 25-point non-destructive verification ledger (incl. SSH reachability) | Pre/post check |
 
 ## Security & State Management
 
