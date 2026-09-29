@@ -6,6 +6,13 @@
 #   bash install.sh --option option-1    # pick a manifest option
 #   bash install.sh --force              # ignore completed-module state
 #   bash install.sh --module rag         # run only one module (repair mode)
+#   bash install.sh --no-verify          # skip the automatic post-install ledger
+#
+# On a live run, after the modules finish the installer WAITS for the 35B
+# engine to finish loading (fresh-box: a few minutes), then RUNS the
+# 25-point verification ledger itself. The one-liner therefore ends with a
+# green result — or an explicit red one with recovery hints. No follow-up
+# command needed from the user.
 #
 # Convention: NO root in front of this script. sudo is called only for the
 # specific steps that need it (never `curl | sudo bash`, never piped user
@@ -17,14 +24,15 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 REPO_DIR="$(pwd)"
 
 # ── arg parse ────────────────────────────────────────────────────────────
-GB_OPT=""; GB_PLAN=0; GB_FORCE=0; GB_ONLY=""
+GB_OPT=""; GB_PLAN=0; GB_FORCE=0; GB_ONLY=""; GB_NOVERIFY=0
 while [ $# -gt 0 ]; do
   case "$1" in
-    --plan)   GB_PLAN=1 ;;
-    --force)  GB_FORCE=1 ;;
-    --module) GB_ONLY="$2"; shift ;;
-    --option) GB_OPT="$2"; shift ;;
-    -h|--help) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --plan)       GB_PLAN=1 ;;
+    --force)      GB_FORCE=1 ;;
+    --module)     GB_ONLY="$2"; shift ;;
+    --option)     GB_OPT="$2"; shift ;;
+    --no-verify)  GB_NOVERIFY=1 ;;
+    -h|--help)    sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown flag: $1 (see --help)" >&2; exit 1 ;;
   esac
   shift
@@ -228,15 +236,76 @@ for mod in "${MOD_ARRAY[@]}"; do
   RAN+=("$mod")
 done
 
+# ── post-install verification (live runs only) ──────────────────────────
+# Fresh boxes: the 35B engine loads ~70 GB into unified memory after the
+# module phase, so :30000/health is not ready when the modules "finish".
+# Wait for it (bounded), then run the ledger so the one-liner ENDS with a
+# real verdict instead of the user having to run verify.sh themselves.
+ENGINE_WAIT_S="${GB_ENGINE_WAIT_S:-900}"   # hard cap: 15 min
+ENGINE_RECHECK_S=10
+
+engine_ready() { curl -sf -m 3 http://127.0.0.1:30000/health >/dev/null 2>&1; }
+
+run_postinstall_verify() {
+  echo ""
+  echo "────────────────────────────────────────────────────────────"
+  echo " VERIFICATION (automatic — part of the install, not optional)"
+  echo "────────────────────────────────────────────────────────────"
+
+  local want_engine=0
+  for m in $GB_MODULES; do [ "$m" = "llm-serving" ] && want_engine=1; done
+
+  if [ "$want_engine" = "1" ]; then
+    if engine_ready; then
+      ok "35B engine healthy (:30000)"
+    else
+      info "35B engine still loading (~70 GB into unified memory) — waiting up to ${ENGINE_WAIT_S}s..."
+      local waited=0
+      while [ "$waited" -lt "$ENGINE_WAIT_S" ]; do
+        sleep "$ENGINE_RECHECK_S"; waited=$((waited + ENGINE_RECHECK_S))
+        if engine_ready; then ok "35B engine healthy after ${waited}s of loading"; break; fi
+        if [ $((waited % 60)) -eq 0 ]; then
+          info "  ...still loading (${waited}s / ${ENGINE_WAIT_S}s cap)"
+        fi
+      done
+      if ! engine_ready; then
+        warn "35B engine not ready after ${ENGINE_WAIT_S}s — ledger will show the L1 rows red; it often finishes shortly after. Re-check: bash scripts/verify.sh"
+      fi
+    fi
+  fi
+
+  info "running the 25-point verification ledger..."
+  echo ""
+  bash "$REPO_DIR/scripts/verify.sh" || {
+    echo ""
+    warn "Ledger above has FAIL rows — do NOT hand over the box as-is."
+    echo "  Recovery (from the box, or over ssh <user>@<box-ip>):"
+    echo "    cd ~/gb10-stack && git pull && bash install.sh --force"
+    echo "    bash scripts/verify.sh                          # re-run after repair"
+    echo "    journalctl -u qwen38-35b.service -n 50 --no-pager   # engine boot log"
+    echo ""
+    return 1
+  }
+  echo ""
+  ok "All 25 verification points passed — this box is verified."
+}
+
 # ── summary ─────────────────────────────────────────────────────────────
+VERIFY_RC=0
 echo ""
 if [ "$GB_PLAN" = "1" ]; then
-  echo "════════════════════════════════════════════════════════"
+  echo "════════════════════════════════════════════════════════════"
   echo " PLAN complete: $(echo "${RAN[*]:-none}" | tr ' ' ', ') (zero writes)"
-  echo " Re-run without --plan to execute."
-  echo "════════════════════════════════════════════════════════"
+  echo " Live runs automatically WAIT for the 35B engine, then run the"
+  echo " 25-point verification ledger — the one-liner ends with a verdict."
+  echo "════════════════════════════════════════════════════════════"
 else
   show_progress "$TOTAL_MODS" "$TOTAL_MODS" "Ready to Use!"
+  if [ "$GB_NOVERIFY" = "1" ]; then
+    info "skipping automatic verification ledger (--no-verify)"
+  else
+    run_postinstall_verify || VERIFY_RC=$?
+  fi
   printf "\033[1;32m══════════════════════════════════════════════════════════════════════\033[0m\n"
   printf "  \033[1;37m🚀 INSTALLATION COMPLETE! YOUR NVIDIA AI WORKSTATION IS READY\033[0m\n"
   printf "\033[1;32m══════════════════════════════════════════════════════════════════════\033[0m\n\n"
@@ -251,8 +320,11 @@ else
   printf "  \033[1;36m3. Upload & Ingest Documents\033[0m\n"
   printf "     In DGX Mission Control, click \033[1m'Knowledge & RAG Studio'\033[0m\n"
   printf "     Drag and drop any PDF/DOCX to retrain your vector knowledge base.\n\n"
-  printf "  \033[1;36m4. Health Check (optional, any time)\033[0m\n"
+  printf "  \033[1;36m4. Re-check health any time (the 25-point ledger already ran above)\033[0m\n"
   printf "     \033[1;33mbash ~/gb10-stack/scripts/verify.sh\033[0m\n"
-  printf "     Runs the 25-point system verification ledger.\n"
   printf "\033[1;32m══════════════════════════════════════════════════════════════════════\033[0m\n"
 fi
+
+# Live runs exit non-zero only when the automatic ledger failed, so a piped
+# one-liner (curl | bash) surfaces the red state to whatever launched it.
+[ "$VERIFY_RC" = "0" ] || exit "$VERIFY_RC"
