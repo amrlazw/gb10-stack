@@ -106,6 +106,48 @@ journalctl -u qwen38-35b.service -f   # tail the model engine's boot log live
 The ledger's L0 section asserts SSH itself (`/usr/sbin/sshd` present + port 22 open),
 so a broken remote path is the first thing you see.
 
+## Recovery & Updates (Re-clone, Re-run)
+
+The one-liner keeps the source at `~/gb10-stack` — you did **not** "just run a script",
+you also got the tools. Everything below assumes that folder exists:
+
+```bash
+# update to the latest fixed installer, then re-run (idempotent — only fixes what's missing)
+cd ~/gb10-stack && git pull
+bash install.sh --force          # full idempotent re-run, every module repairs itself
+
+# repair just one broken piece (fastest path)
+bash install.sh --module mission-control   # dashboard only
+bash install.sh --module llm-serving       # 35B engine + systemd unit only
+bash install.sh --module rag               # Open WebUI + RAG only
+
+# then prove it:
+bash scripts/verify.sh
+```
+
+If `~/gb10-stack` is **missing** (deleted, moved box), re-clone and re-run:
+
+```bash
+git clone https://github.com/amrlazw/gb10-stack ~/gb10-stack
+cd ~/gb10-stack && bash install.sh --force
+```
+
+`--force` is safe: it never re-downloads 22 GB of weights, never re-pulls images
+that are already cached, and never wipes RAG data — it only repairs what's absent.
+
+### Dashboard only (no repo needed)
+
+If a box just needs the Mission Control dashboard and RAG Studio UI — without the
+full stack or any git checkout:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/amrlazw/gb10-stack/main/mission-control.sh | bash
+```
+
+Fetches the dashboard from the GitHub CDN into `~/mission-control`, generates the
+service list from what's actually on the box, starts `:8765` + desktop shortcut.
+Re-running the same command **updates** the dashboard in place (PIN is preserved).
+
 ## Uninstall (Pull the Stack Out)
 
 ```bash
