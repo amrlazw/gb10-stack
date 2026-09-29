@@ -1,6 +1,6 @@
 # gb10-stack
 
-Turnkey, modular enterprise installer for NVIDIA GB10 (Grace Blackwell) AI Workstations. One command deploys the complete enterprise LLM & RAG stack: Flagship 35B NVFP4 MoE inference (SGLang official, dedicated 70 GB allocation), local RAG (Open WebUI + MiniLM-L12 embeddings + Chroma vector store), enterprise observability (Prometheus/node-exporter/DCGM/Loki/Grafana, ESM-gated), and DGX Mission Control featuring the Knowledge & RAG Studio.
+Turnkey, modular enterprise installer for NVIDIA GB10 (Grace Blackwell) AI Workstations. One command deploys the complete enterprise LLM & RAG stack: Flagship 35B NVFP4 MoE inference (SGLang official, dedicated 70 GB allocation), local RAG (Open WebUI + BAAI/bge-m3 embeddings + mmarco reranker + Chroma vector store), enterprise observability (Prometheus/node-exporter/DCGM/Loki/Grafana, ESM-gated), and DGX Mission Control featuring the Knowledge & RAG Studio. After the modules install, the one-liner **automatically waits for the 35B engine to finish loading, then runs the 25-point verification ledger** — it ends with a green verdict, or a red one with recovery instructions. No follow-up command needed.
 
 ---
 
@@ -25,9 +25,22 @@ You will see a live progress bar tracking each stage of the installation automat
 
 ```text
 ╭──────────────────────────────────────────────────────────╮
-│  [████████████░░░░░░░░░░░░]  50%  Step 2/4: RAG & Open WebUI    │
+│  [████████████░░░░░░░░░░]  50%  Step 2/4: RAG & Open WebUI    │
 ╰──────────────────────────────────────────────────────────╯
 ```
+
+After the four modules finish, the installer moves into **automatic verification**:
+
+1. It waits (up to 15 minutes) until the 35B engine has loaded its ~70 GB
+   into unified memory and answers on `:30000`.
+2. It then runs the **25-point verification ledger** and prints every check.
+
+If all 25 rows are green, the terminal ends with
+`All 25 verification points passed — this box is verified.` If any row is
+red, the command exits non-zero and prints the exact recovery steps
+(`git pull && install.sh --force`, the relevant journal log, re-run the
+ledger). You never have to remember a verification command — the one-liner
+finishes the job.
 
 ---
 
@@ -84,9 +97,10 @@ The retrieval pipeline operates 100% on-device with zero external cloud API depe
 
 ```bash
 bash install.sh --plan          # zero-write dry run (audits hardware & disk without mutating system)
-bash install.sh                 # interactive turnkey deployment
+bash install.sh                 # interactive turnkey deployment + automatic verification
 bash install.sh --force         # idempotent rerun / recovery
 bash install.sh --module rag    # targeted repair of an isolated module
+bash install.sh --no-verify     # skip the automatic post-install ledger
 bash scripts/verify.sh          # 25-point post-install verification ledger
 bash scripts/uninstall.sh --plan  # dry-run the full teardown (see "Uninstall" below)
 ```
