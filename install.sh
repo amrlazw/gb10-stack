@@ -118,6 +118,31 @@ ensure_docker() {
   fi
 }
 
+# A fresh/headless GB10 box needs SSH so a technician can reach it without a
+# physical console. Installed EARLY (before the heavy Docker/model work) so that
+# even if a later step stalls, the box stays remotely reachable for diagnosis.
+# Idempotent: no-op if openssh-server is already present.
+ensure_ssh() {
+  if [ -x /usr/sbin/sshd ]; then
+    ok "SSH server already present (/usr/sbin/sshd)"
+    if [ "$GB_PLAN" = "1" ]; then
+      plan "systemctl enable --now ssh"
+    else
+      run_root "systemctl enable --now ssh" || true
+    fi
+    return 0
+  fi
+
+  info "SSH server not found — installing openssh-server so this box is reachable..."
+  if [ "$GB_PLAN" = "1" ]; then
+    plan "install openssh-server and enable ssh.service"
+  else
+    run_root "apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y openssh-server"
+    run_root "systemctl enable --now ssh"
+    ok "SSH server installed and service started"
+  fi
+}
+
 # ── preflight (always; read-only in plan mode) ──────────────────────────
 preflight() {
   info "preflight: hardware & disk"
@@ -131,9 +156,11 @@ preflight() {
   ok "disk: ${free} GB free (need ${GB_MIN_FREE})"
   if [ "$GB_PLAN" != "1" ]; then
     command -v sudo >/dev/null || die "sudo is required for system steps"
+    ensure_ssh
     ensure_docker
     docker_ok || die "docker daemon not reachable after installation attempt (check systemctl status docker)"
   else
+    [ -x /usr/sbin/sshd ] || plan "install openssh-server (SSH access for remote verification)"
     if ! command -v docker >/dev/null 2>&1; then
       plan "install docker.io, docker-compose-v2, and nvidia-container-toolkit"
     fi

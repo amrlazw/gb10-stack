@@ -77,8 +77,23 @@ bash install.sh --plan          # zero-write dry run (audits hardware & disk wit
 bash install.sh                 # interactive turnkey deployment
 bash install.sh --force         # idempotent rerun / recovery
 bash install.sh --module rag    # targeted repair of an isolated module
-bash scripts/verify.sh          # 14-point post-install verification ledger
+bash scripts/verify.sh          # 24-point post-install verification ledger
 ```
+
+## Remote Diagnostics (SSH)
+
+The installer installs and enables **`openssh-server`** in preflight — before any heavy
+work starts — so a headless box is always remotely reachable, even if a later step
+stalls:
+
+```bash
+ssh <user>@<box-ip>             # from your laptop (port 22)
+bash ~/gb10-stack/scripts/verify.sh   # full 24-point "did anything break" ledger
+journalctl -u qwen38-35b.service -f   # tail the model engine's boot log live
+```
+
+The ledger's L0 section asserts SSH itself (`/usr/sbin/sshd` present + port 22 open),
+so a broken remote path is the first thing you see.
 
 ## Resource Headroom & Capacity Analysis (Fresh Box)
 
@@ -121,7 +136,7 @@ The remaining **~45.6 GiB** buffer provides abundant margin for:
 | `modules/observability.sh` | ESM Prometheus, node-exporter, DCGM GPU telemetry, Grafana | `:9090`, `:9100`, `:9400`, `:3000` |
 | `modules/mission-control.sh` | Live dashboard, RAG Studio, and Desktop shortcut creation | `mission-control.service` (`:8765`) |
 | `scripts/gen-services.sh` | Dynamic service scanner generating live `mc.json` | Automatic |
-| `scripts/verify.sh` | 14-point non-destructive verification ledger | Pre/post check |
+| `scripts/verify.sh` | 24-point non-destructive verification ledger (incl. SSH reachability) | Pre/post check |
 
 ## Security & State Management
 

@@ -33,6 +33,8 @@ echo "────────────────────────�
 # ── L0: base ────────────────────────────────────────────────────────────
 check "docker daemon up" docker info
 check "nvidia driver present" nvidia-smi
+check "ssh server installed (/usr/sbin/sshd)" test -x /usr/sbin/sshd
+check "ssh reachable (:22)" port_open 22
 
 # ── L1: LLM serving (Flagship 35B NVFP4 MoE) ───────────────────────────
 check "35B engine healthy (:30000 /health)" curl -sf -m 3 http://127.0.0.1:30000/health
