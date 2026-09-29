@@ -78,6 +78,7 @@ bash install.sh                 # interactive turnkey deployment
 bash install.sh --force         # idempotent rerun / recovery
 bash install.sh --module rag    # targeted repair of an isolated module
 bash scripts/verify.sh          # 24-point post-install verification ledger
+bash scripts/uninstall.sh --plan  # dry-run the full teardown (see "Uninstall" below)
 ```
 
 ## Remote Diagnostics (SSH)
@@ -94,6 +95,25 @@ journalctl -u qwen38-35b.service -f   # tail the model engine's boot log live
 
 The ledger's L0 section asserts SSH itself (`/usr/sbin/sshd` present + port 22 open),
 so a broken remote path is the first thing you see.
+
+## Uninstall (Pull the Stack Out)
+
+```bash
+bash ~/gb10-stack/scripts/uninstall.sh --plan    # dry run: every step, zero writes
+bash ~/gb10-stack/scripts/uninstall.sh           # safe removal (type UNINSTALL to confirm)
+bash ~/gb10-stack/scripts/uninstall.sh --purge   # total teardown, including RAG data + 22 GB weights
+```
+
+| Tier | Removes | Keeps |
+|---|---|---|
+| **Default** | All systemd units (`qwen38-35b`, `open-webui*`, `mission-control`), all containers (incl. any 27B lane if present), `~/mission-control`, `~/.config/qwen38`, `~/.gb10-stack`, desktop shortcut | Open WebUI volume (**your RAG collections survive**), Docker images, 35B weight cache → re-install in minutes, not hours |
+| **`--purge`** | Everything above **+** `open-webui` volume (all collections), all Docker images, 35B HF weights (~22 GB), observability apt packages | OS, desktop environment, SSH |
+
+Safety properties:
+- **Dry-run first, always**: `--plan` lists every mutation without executing.
+- **Confirmation gate**: live runs require typing `UNINSTALL` (or `--yes` for automation).
+- **Idempotent**: every step tolerates already-removed components — re-running on a clean box is a no-op.
+- **No data loss by default**: RAG collections, model weights and images are preserved so a re-install reuses everything already downloaded.
 
 ## Resource Headroom & Capacity Analysis (Fresh Box)
 
